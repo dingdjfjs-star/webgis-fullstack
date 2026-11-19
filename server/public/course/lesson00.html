@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 0 课 · 把系统跑起来，认识每个零件</title>
+<link rel="stylesheet" href="course.css">
+</head>
+<body data-lesson="00">
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>第 0 课</a>
+  <label class="done-toggle"><input type="checkbox"> 已完成本课</label>
+</div></div>
+
+<div class="wrap">
+  <h1><span class="knum">第 0 课</span>把系统跑起来，认识每个零件</h1>
+  <p class="lead">这一课不写代码。目标是：你能亲手启动整套系统、知道它由哪四层组成、并第一次跟数据库"说话"。</p>
+
+  <nav class="toc">
+    <b>本课目录</b>
+    <ol>
+      <li><a href="#what">这门课到底在学什么</a></li>
+      <li><a href="#arch">系统的四层：从你点鼠标到数据躺在磁盘上</a></li>
+      <li><a href="#run">动手：启动与停止</a></li>
+      <li><a href="#psql">跟数据库说话的两种方式</a></li>
+      <li><a href="#first">你的前两条 SQL</a></li>
+      <li><a href="#quiz">小测 + 打卡</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="what">1. 这门课到底在学什么</h2>
+  <p>你见过的成品是这两张地图（建议现在就点开各玩一分钟）：</p>
+  <ul>
+    <li><a href="http://localhost:3000/poi" target="_blank">POI 空间分析系统</a> —— 地图上 25 万个"兴趣点"（Point of Interest，就是店铺、医院、学校这类地点），能切热力图、六边形密度、按类别筛选、圈出某点周围 1 公里做统计。</li>
+    <li><a href="http://localhost:3000/basin" target="_blank">流域生态监测平台</a> —— 三维地图上的河流水系，10 个水质监测站，点开看 30 天水质曲线和降雨响应。</li>
+  </ul>
+  <p>这两个网页背后是一条完整的数据流水线：<strong>数据库存着 25 万个带坐标的地点 → 后端把"数据库语言"翻译成"网页语言" → 前端把数字画成地图</strong>。这门课就是让你能独立搭出这条流水线——按难度从 SQL 一路学到三维地图，共 9 课。</p>
+  <div class="note"><b>零基础够用吗？</b>这门课假设你<strong>没写过 SQL、没写过前端</strong>。每出现一个新词都会当场解释。你唯一需要的是：会开 cmd、会双击文件、愿意动手。</div>
+
+  <h2 id="arch">2. 系统的四层：从你点鼠标到数据躺在磁盘上</h2>
+  <p>在浏览器里点一下"热力图"，背后发生了四次接力：</p>
+  <div class="demo">
+    <div class="rowflow">
+      <div class="r"><b>① 浏览器（前端）</b><span>你看到的网页：地图、按钮、图表</span><span class="v">Leaflet / Cesium</span></div>
+      <div class="r" style="padding-left:34px">↓ "给我视野内的餐饮店"（HTTP 请求）</div>
+      <div class="r"><b>② 后端服务</b><span>翻译官：听懂网页的话，转成 SQL 去查库</span><span class="v">Node.js + Express</span></div>
+      <div class="r" style="padding-left:34px">↓ SELECT ... FROM poi.pois ...（SQL）</div>
+      <div class="r"><b>③ 空间数据库</b><span>真正的分析大脑：距离、范围、聚合都在这算</span><span class="v">PostgreSQL + PostGIS</span></div>
+      <div class="r" style="padding-left:34px">↓ 读文件</div>
+      <div class="r"><b>④ 磁盘上的数据文件</b><span>数据真正住的地方</span><span class="v">E:\zcode\.tools\pgdata</span></div>
+    </div>
+    <div class="cap">四层接力：网页发请求 → 后端翻译成 SQL → 数据库算出结果 → 原路返回画成图</div>
+  </div>
+  <p>本课程的工作量分布也在这四层：<strong>第 0–2 课学第③层（数据库，最重要）</strong>，第 3 课学第②层（后端），第 4–5 课学第①层（前端），第 6 课讲数据怎么造的，第 7 课三维，第 8 课测试收尾。</p>
+  <div class="key">新手最大的误区是"分析逻辑写在前端"。这套系统里，<b>空间计算全部发生在数据库</b>——前端只负责画。这个观念贯穿全课程。</div>
+
+  <h2 id="run">3. 动手：启动与停止</h2>
+  <p>你的电脑重启过，数据库和后端就会停。启动它们（这也是你以后最常用的一步）：</p>
+  <ul>
+    <li><strong>一键启动</strong>：双击 <code>E:\zcode\scripts\start-all.bat</code>。它会弹出两个黑窗口——一个跑数据库，一个跑后端。<strong>别关那两个窗口</strong>，关了系统就停了。</li>
+    <li><strong>验证</strong>：浏览器打开 <a href="http://localhost:3000/api/health" target="_blank">localhost:3000/api/health</a>，看到一段 JSON 且里面有 <code>"ok":true</code> 就说明全通了。</li>
+  </ul>
+  <pre><code>什么是"端口"？你可以把电脑想成一栋楼，端口就是房间号。
+  5433 = 数据库的房间（PostgreSQL 的默认习惯是 5432，我们用 5433 避开占用）
+  3000 = 后端的房间（网页、接口都从这个门进出）
+所以 localhost:3000/poi 意思是"本机 3000 房间里的 poi 页面"。</code></pre>
+
+  <h2 id="psql">4. 跟数据库说话的两种方式</h2>
+  <p>数据库只听得懂一门语言：<strong>SQL</strong>（Structured Query Language，结构化查询语言）。跟它说话有两个渠道：</p>
+  <h3>方式 A：本课程的「试一试」框（推荐新手）</h3>
+  <p>本课程每个知识点下面都有蓝色边框的<strong>「试一试」</strong>——里面预填了 SQL，点「运行」，立刻看到真实结果。<strong>它连的就是你库里那 25 万条数据</strong>，不是假数据。框里的 SQL 可以随便改，改坏了也不会破坏数据（沙盒只允许查询，不允许删改）。</p>
+  <h3>方式 B：psql 命令行（专业姿势）</h3>
+  <p>psql 是数据库自带的对话终端。开一个新 cmd，输入：</p>
+  <pre><code>set PGCLIENTENCODING=GBK
+set PGPASSWORD=webgis123
+E:\zcode\.tools\pgsql\bin\psql.exe -h 127.0.0.1 -p 5433 -U webgis -d webgis</code></pre>
+  <p>逐行解释：</p>
+  <table class="doc">
+    <tr><th>片段</th><th>意思</th></tr>
+    <tr><td class="mono">set PGCLIENTENCODING=GBK</td><td>让中文正常显示（psql 在中文 Windows 上的编码习惯，不设会显示乱码）</td></tr>
+    <tr><td class="mono">set PGPASSWORD=...</td><td>数据库密码（账号 webgis，库 webgis）</td></tr>
+    <tr><td class="mono">-h 127.0.0.1</td><td>连"本机"（127.0.0.1 永远指本机自己）</td></tr>
+    <tr><td class="mono">-p 5433</td><td>去 5433 房间找数据库</td></tr>
+    <tr><td class="mono">-U webgis -d webgis</td><td>用 webgis 账号，进 webgis 库</td></tr>
+  </table>
+  <p>出现 <code>webgis=#</code> 提示符就表示你已经"站进了数据库"。输入 <code>\q</code> 退出，<code>\dt</code> 列出所有表。本课程以「试一试」为主，psql 你会用了就行。</p>
+
+  <h2 id="first">5. 你的前两条 SQL</h2>
+  <p>先打个招呼。点「运行」：</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 0-1 · 自我介绍</span><span class="pg-hint">Ctrl+Enter 也能运行</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT version();</textarea>
+    <div class="pg-out">点击「运行」，看看你数据库的"身份证"</div>
+  </div>
+  <p><code>SELECT ... FROM ...</code> 是 SQL 最基本的句式，意思是"从某某表里挑出某些列"。刚才这条连 FROM 都没有——它只是让数据库算个函数还给你。返回那一长串是 <strong>PostgreSQL 的版本号</strong>（PostgreSQL 是数据库软件的名字，我们装的是 16.9 版）。</p>
+  <p>第二条，确认"空间能力"已安装：</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 0-2 · 确认 PostGIS</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT postgis_full_version();</textarea>
+    <div class="pg-out">点击运行 —— 看到一串 POSTGIS="3.x" 就说明空间引擎就位</div>
+  </div>
+  <p><strong>PostGIS</strong> 是装在 PostgreSQL 里的一个"空间扩展插件"。没有它，数据库只是个普通表格软件；装上它，数据库才认识"坐标、河流线、行政区面"，才能算距离和范围。返回里还能看到 GEOS、PROJ 等字样，它们是底层几何运算库的名字，认识一下即可。</p>
+  <p>最后看看我们库里有哪些表：</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 0-3 · 盘点家底</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_schema IN ('poi', 'basin')
+ORDER BY table_schema, table_name;</textarea>
+    <div class="pg-out">点击运行 —— 这是这个数据库里全部 9 张表的家底清单</div>
+  </div>
+  <p><code>information_schema</code> 是数据库自带的"仓库登记册"，记录着库里有哪几张表、每张表有哪些列。你看到两个<strong>模式（schema）</strong>：<code>poi</code>（城市 POI 那套）和 <code>basin</code>（流域监测那套）——schema 就像文件夹，把两套业务的表分开收纳。</p>
+
+  <h2 id="quiz">6. 小测 + 打卡</h2>
+  <div class="ex">
+    <h4>小测（口头回答即可，点开核对）</h4>
+    <p class="q">Q1：你在地图上点了一下"六边形密度"，这个<strong>六边形的计算</strong>发生在四层里的哪一层？</p>
+    <details><summary>查看答案</summary><div class="ans">第③层数据库。前端只把"请求"发出去，把"结果"画出来；真正的聚合计算是数据库里的 ST_HexagonGrid 等函数干的（第 2 课你会亲手用它）。</div></details>
+    <p class="q">Q2：浏览器打开 localhost:3000/poi，这里的 3000 是谁的房间号？</p>
+    <details><summary>查看答案</summary><div class="ans">后端（Node.js 服务）的端口。网页文件也是由它递给你的；它同时把 /api 开头的请求转给数据库。</div></details>
+  </div>
+
+  <div class="key" style="margin-top:26px"><b>本课你学会了：</b>四层架构、启动/停止系统、端口是什么、psql 连接三件套、SELECT version()。你已经跟数据库说过话了——下一课开始，让它替你回答空间问题。</div>
+
+  <div class="pager">
+    <a class="next" href="lesson01.html"><span class="dir">下一课 →</span>第 1 课：空间数据长什么样</a>
+  </div>
+</div>
+
+<script src="course.js"></script>
+</body>
+</html>

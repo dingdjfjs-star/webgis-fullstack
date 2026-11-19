@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 7 课 · Cesium 三维流域</title>
+<link rel="stylesheet" href="/vendor/cesium/Widgets/widgets.css">
+<link rel="stylesheet" href="course.css">
+<style>
+  #globe { height: 500px; border-radius: 12px; border: 1px solid var(--line); margin: 14px 0; position: relative; }
+  .globe-tip { position: absolute; left: 10px; bottom: 10px; z-index: 900; background: rgba(15,23,42,.85);
+    color: #e2e8f0; border-radius: 8px; padding: 6px 12px; font-size: 13px; max-width: 70%; }
+  .globe-btns { display: flex; gap: 8px; margin: 8px 0; }
+  .globe-btns button { border: 1px solid var(--line); background: #fff; border-radius: 7px; padding: 6px 14px;
+    font-size: 13px; cursor: pointer; }
+  .globe-btns button:hover { border-color: #2563eb; color: #2563eb; }
+</style>
+</head>
+<body data-lesson="07">
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>第 7 课</a>
+  <label class="done-toggle"><input type="checkbox"> 已完成本课</label>
+</div></div>
+
+<div class="wrap">
+  <h1><span class="knum">第 7 课</span>Cesium 三维流域</h1>
+  <p class="lead">最后一层新楼层：三维。Cesium 和 Leaflet 都是开源地图库，但气质完全不同——下面这个真三维球就是本课要拆解的东西（首次加载约几秒，请稍候；可以直接拖、缩、点站点）。</p>
+
+  <div class="globe-btns">
+    <button id="btnFull">流域全景（俯视）</button>
+    <button id="btnTilt">斜视角看干流</button>
+    <button id="btnWorst">飞到污染最重的站</button>
+  </div>
+  <div id="globe">
+    <div class="globe-tip" id="globeTip">三维球加载中…（首次约 3~8 秒）</div>
+  </div>
+
+  <nav class="toc">
+    <b>本课目录</b>
+    <ol>
+      <li><a href="#t1">Leaflet vs Cesium：选型分工</a></li>
+      <li><a href="#t2">初始化一个 Viewer（逐行）</a></li>
+      <li><a href="#t3">相机与坐标：多了"高度"</a></li>
+      <li><a href="#t4">加载 GeoJSON 与点实体</a></li>
+      <li><a href="#t5">点击拾取</a></li>
+      <li><a href="#t6">三连坑复习 + 动手作业</a></li>
+      <li><a href="#t7">练习 + 打卡</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="t1">1. Leaflet vs Cesium：选型分工</h2>
+  <table class="doc">
+    <tr><th></th><th>Leaflet（第 4、5 课）</th><th>Cesium（本课）</th></tr>
+    <tr><td>世界观</td><td>平面地图（把地球摊开的一张图）</td><td>真三维球（能转、能斜着看、能贴地形）</td></tr>
+    <tr><td>擅长</td><td>数据密集的分析页：热力、格网、海量点</td><td>展示汇报页：河网、地形、场景感</td></tr>
+    <tr><td>成本</td><td>轻（几十 KB），手机也流畅</td><td>重（几十 MB 资源），吃显卡</td></tr>
+    <tr><td>我们的用法</td><td>POI 分析系统</td><td>流域监测平台</td></tr>
+  </table>
+  <p>经验法则：<strong>分析用 Leaflet，展示用 Cesium</strong>。两者可以并存（我们系统就是这么干的），共用同一套数据库和 API。</p>
+
+  <h2 id="t2">2. 初始化一个 Viewer（逐行）</h2>
+  <p>Cesium 的入口是 <code>Viewer</code>（视图器）。流域平台 <code>public/basin/js/app.js</code> 的初始化骨架：</p>
+  <pre><code>window.CESIUM_BASE_URL = '/vendor/cesium/';    // ① 告诉Cesium去哪找自己的资源(Workers等)
+
+const viewer = new Cesium.Viewer('globe', {
+  baseLayer: new Cesium.ImageryLayer(          // ② 底图：和第4课同一个Esri服务
+    new Cesium.UrlTemplateImageryProvider({
+      url: 'https://server.arcgisonline.com/.../tile/{z}/{y}/{x}',
+      maximumLevel: 16,
+    })),
+  baseLayerPicker: false, geocoder: false,     // ③ 关掉一堆默认小控件
+  animation: false, timeline: false,           //    （时间轴动画用不上）
+  infoBox: false, selectionIndicator: false,
+  contextOptions: { webgl: {                   // ④ WebGL 配置
+    preserveDrawingBuffer: true } },           //    截屏/录屏才能抓到画面
+});</code></pre>
+  <p>和 Leaflet 不同，Cesium 自带一整套 UI（图层选择器、搜索框、时间轴……），演示系统通常全关掉，只留球。</p>
+
+  <h2 id="t3">3. 相机与坐标：多了"高度"</h2>
+  <p>Leaflet 定位靠 (纬度, 经度)；Cesium 的相机还要 <strong>高度</strong>（米）：</p>
+  <pre><code>viewer.camera.setView({
+  destination: Cesium.Cartesian3.fromDegrees(114.32, 30.55, 62000)
+});                           // 经度, 纬度, 高度62000米 —— 从62公里高空看
+viewer.camera.flyTo({ destination: ..., duration: 1.2 });  // 带动画的飞行</code></pre>
+  <p>三个按钮就是调这个：<strong>setView 瞬移，flyTo 平滑飞过去</strong>。试试上方"飞到污染最重的站"按钮——它 flyTo 到工业走廊站上空 8 公里。</p>
+  <div class="pit"><b>坑：</b>Cesium 是 [经度, 纬度, 高度]（和 SQL 一致、和 Leaflet 相反、GeoJSON 也是经度在前）。三个库两种顺序，写代码时先默念一遍。</div>
+
+  <h2 id="t4">4. 加载 GeoJSON 与点实体</h2>
+  <p>河流是线、边界是面——直接吃第 3 课那种 API 返回的 GeoJSON：</p>
+  <pre><code>// ① 面/线：一个函数整包加载（clampToGround=贴地）
+const ds = await Cesium.GeoJsonDataSource.load(geojson, { clampToGround: true });
+viewer.dataSources.add(ds);
+// ② 遍历实体改样式：干流粗、支流细（strahler 是河级，第6课的"剧本"定的）
+for (const e of ds.entities.values) {
+  const level = e.properties.strahler.getValue();       // 读属性要 .getValue()
+  e.polyline.width = { 1: 1.5, 2: 2.5, 3: 4, 4: 7 }[level] || 1.5;
+  e.polyline.material = Cesium.Color.fromCssColorString('#3b7dd8').withAlpha(0.9);
+}
+// ③ 点实体：监测站，按水质等级上色
+new Cesium.CustomDataSource('stations');  // 自建一个"图层组"
+ds.entities.add({
+  position: Cesium.Cartesian3.fromDegrees(s.x, s.y),
+  point: { pixelSize: 12, color: Cesium.Color.fromCssColorString(s.grade_color),
+           outlineColor: Cesium.Color.WHITE.withAlpha(0.8), outlineWidth: 1.5 },
+  label: { text: s.name, font: '12px sans-serif', pixelOffset: new Cesium.Cartesian2(0, -20) },
+});</code></pre>
+
+  <h2 id="t5">5. 点击拾取</h2>
+  <p>三维世界"点到了什么"要自己问——拾取（pick）：</p>
+  <pre><code>const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+handler.setInputAction((movement) =&gt; {
+  const picked = viewer.scene.pick(movement.position);   // 这一像素下是什么实体？
+  if (Cesium.defined(picked) &amp;&amp; picked.id?.properties?.stationId) {
+    flyToStation(picked.id.properties.stationId.getValue()); // 是站点 → 飞过去开曲线
+  }
+}, Cesium.ScreenSpaceEventType.LEFT_CLICK);</code></pre>
+  <p>流域平台里这段代码就是"点站点 → 右侧滑出水质曲线"的入口。</p>
+
+  <h2 id="t6">6. 三连坑复习 + 动手作业</h2>
+  <div class="pit"><b>坑 ①黑屏（画布 300×150）：</b>没引入 <code>/vendor/cesium/Widgets/widgets.css</code>——canvas 没有 100% 铺满规则。左侧数据面板正常、地图全黑时，先查这个。</div>
+  <div class="pit"><b>坑 ②"假黑屏"：</b>WebGL 默认不留画面缓冲，浏览器里明明渲染正常，截图却是黑的。加上面的 <code>preserveDrawingBuffer</code> 再截。</div>
+  <div class="pit"><b>坑 ③容器没高度：</b>同 Leaflet 坑 2。初始化完成后补一句 <code>viewer.resize()</code> 保平安。</div>
+  <p><strong>动手作业：</strong>把本页这个三维演示扩展成你自己的 <code>my-globe.html</code>（存课程目录，localhost 打开）。起步代码=本页源码里 <code>&lt;script&gt;</code> 段（右键查看源文件可抄），完成两个改造：① 加第 4 个按钮 flyTo 你喜欢的任意坐标；② 把站点 point 的 pixelSize 改成随 load_cod（污染负荷）变化。</p>
+
+  <h2 id="t7">7. 练习 + 打卡</h2>
+  <div class="ex">
+    <h4>练习 1</h4>
+    <p class="q">相机高度从 62000 米降到 6000 米，视野里的范围大约是原来的多大？分别在两个高度看一个行政区，感受一下。</p>
+    <details><summary>查看答案</summary><div class="ans">粗略按面积算约 1/100（线性尺度 1/10）。这也是为什么 Cesium 页通常配 DistanceDisplayCondition：标注只在合适高度显示（比如 9 万米内），太远时几十个标签挤成一团反而看不清。</div></details>
+  </div>
+  <div class="ex">
+    <h4>练习 2</h4>
+    <p class="q">为什么流域平台选 Cesium 而 POI 系统选 Leaflet？如果让你做"全市井盖破损监测大屏"，选哪个？理由？</p>
+    <details><summary>查看答案</summary><div class="ans">大屏汇报类、需要场景感 → Cesium 占优；但如果核心是"按片区统计破损率+点击列表定位"，Leaflet 反而更实用轻快。选型看<b>主要动作是"看场景"还是"查数据"</b>——没有标准答案，能说清理由就是对的。</div></details>
+  </div>
+
+  <div class="key" style="margin-top:26px"><b>本课速查卡：</b>分析 Leaflet / 展示 Cesium ｜ <code>fromDegrees(经,纬,高米)</code> ｜ setView 瞬移、flyTo 飞行 ｜ GeoJsonDataSource.load 吃 API 的 GeoJSON ｜ 属性读取 .getValue() ｜ scene.pick 拾取 ｜ widgets.css 别忘、preserveDrawingBuffer 保截屏。</div>
+
+  <div class="pager">
+    <a href="lesson06.html"><span class="dir">← 上一课</span>第 6 课：数据从哪来</a>
+    <a class="next" href="lesson08.html"><span class="dir">下一课 →</span>第 8 课：测试与性能（毕业课）</a>
+  </div>
+</div>
+
+<script src="/vendor/cesium/Cesium.js"></script>
+<script src="course.js"></script>
+<script>
+(function () {
+  const tip = document.getElementById('globeTip');
+  try {
+    window.CESIUM_BASE_URL = '/vendor/cesium/';
+    const viewer = new Cesium.Viewer('globe', {
+      baseLayer: new Cesium.ImageryLayer(new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        maximumLevel: 16,
+      })),
+      baseLayerPicker: false, geocoder: false, homeButton: false, sceneModePicker: false,
+      navigationHelpButton: false, animation: false, timeline: false, fullscreenButton: false,
+      infoBox: false, selectionIndicator: false,
+      contextOptions: { webgl: { preserveDrawingBuffer: true } },
+    });
+    viewer.scene.globe.enableLighting = false;
+    viewer.camera.setView({ destination: Cesium.Cartesian3.fromDegrees(114.32, 30.55, 700000) });
+    window.myViewer = viewer;
+
+    const flyTo = (lon, lat, h, tilt) => viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(lon, lat - (tilt ? 0.06 : 0), h),
+      orientation: tilt ? { heading: 0, pitch: Cesium.Math.toRadians(-38), roll: 0 } : undefined,
+      duration: 1.6,
+    });
+    document.getElementById('btnFull').addEventListener('click', () => flyTo(114.32, 30.56, 68000));
+    document.getElementById('btnTilt').addEventListener('click', () => flyTo(114.30, 30.58, 16000, true));
+    document.getElementById('btnWorst').addEventListener('click', () => flyTo(114.47, 30.53, 9000, true));
+
+    (async () => {
+      // 流域边界（面）
+      const ov = await (await fetch('/api/basin/overview')).json();
+      const bnd = await Cesium.GeoJsonDataSource.load(
+        { type: 'Feature', geometry: ov.boundary, properties: {} },
+        { stroke: Cesium.Color.fromCssColorString('#38bdf8').withAlpha(0.9),
+          fill: Cesium.Color.fromCssColorString('#38bdf8').withAlpha(0.05), clampToGround: true });
+      viewer.dataSources.add(bnd);
+      // 监测站（点，按等级着色）
+      const { stations } = await (await fetch('/api/basin/stations')).json();
+      const sds = new Cesium.CustomDataSource('stations');
+      for (const s of stations.filter(x => x.kind === 'water_quality')) {
+        sds.entities.add({
+          position: Cesium.Cartesian3.fromDegrees(s.x, s.y),
+          point: { pixelSize: 12, color: Cesium.Color.fromCssColorString(s.grade_color || '#4a5a6d'),
+            outlineColor: Cesium.Color.WHITE.withAlpha(0.8), outlineWidth: 1.5 },
+          label: { text: s.name.replace('临江·', ''), font: '12px "Microsoft YaHei"',
+            fillColor: Cesium.Color.fromCssColorString('#1a2332'),
+            showBackground: true, backgroundColor: Cesium.Color.WHITE.withAlpha(0.85),
+            pixelOffset: new Cesium.Cartesian2(0, -20), distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 120000) },
+          properties: { sid: s.id, name: s.name, grade: s.grade_name, nh3: s.latest?.nh3_n },
+        });
+      }
+      viewer.dataSources.add(sds);
+      // 点击拾取
+      new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas).setInputAction((mv) => {
+        const p = viewer.scene.pick(mv.position);
+        if (Cesium.defined(p) && p.id?.properties?.sid) {
+          const pr = p.id.properties;
+          tip.textContent = `🧪 ${pr.name.getValue()} —— ${pr.grade.getValue()}类 ｜ 氨氮 ${pr.nh3.getValue()?.toFixed(2)} mg/L（流域平台里此处会滑出 30 天曲线）`;
+        }
+      }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+      viewer.resize();
+      tip.textContent = '✓ 已加载流域边界 + 10 个水质站。拖转地球、点站点试试，或点上方按钮';
+    })().catch(e => { tip.textContent = '数据加载失败：' + e.message; });
+  } catch (e) {
+    tip.textContent = '三维环境初始化失败（WebGL 不可用？）：' + e.message;
+  }
+})();
+</script>
+</body>
+</html>

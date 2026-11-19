@@ -1,0 +1,28 @@
+{
+  "name": "webgis-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WebGIS 全流程演示系统：PostGIS + Node.js/Express + Leaflet/Cesium",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node scripts/seed.js",
+    "vendor": "node scripts/copy-vendor.js",
+    "test": "node --test test/api.test.js",
+    "bench": "node test/bench.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "pg-copy-streams": "^6.0.6"
+  },
+  "devDependencies": {
+    "cesium": "^1.126.0",
+    "echarts": "^5.5.1",
+    "leaflet": "^1.9.4",
+    "leaflet.markercluster": "^1.5.3",
+    "leaflet.heat": "^0.2.0"
+  }
+}

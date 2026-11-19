@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 6 课 · 数据从哪来：造出 25 万个点</title>
+<link rel="stylesheet" href="course.css">
+</head>
+<body data-lesson="06">
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>第 6 课</a>
+  <label class="done-toggle"><input type="checkbox"> 已完成本课</label>
+</div></div>
+
+<div class="wrap">
+  <h1><span class="knum">第 6 课</span>数据从哪来：造出 25 万个点</h1>
+  <p class="lead">这 25 万个 POI 不是爬来的，是程序生成的——但它们"像真的"：市中心挤、主干道沿线成串、类别比例符合常识。这课教你造数据的手艺，以及为什么"像真的"本身是一门学问。</p>
+
+  <nav class="toc">
+    <b>本课目录</b>
+    <ol>
+      <li><a href="#t1">为什么不能"均匀随机"</a></li>
+      <li><a href="#t2">混合空间模型：四成市民住在三种地方</a></li>
+      <li><a href="#t3">确定性随机：种子 20260829</a></li>
+      <li><a href="#t4">26 秒灌 25 万行的秘密：COPY</a></li>
+      <li><a href="#t5">水质时序的"剧本"</a></li>
+      <li><a href="#t6">亲手验证数据规律（3 个查询）</a></li>
+      <li><a href="#t7">动手改数据 + 练习 + 打卡</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="t1">1. 为什么不能"均匀随机"</h2>
+  <p>造 25 万个点最省事的写法是 <code>经度 = 114.08 + 随机数×0.48</code>，纬度同理。试想那样会发生什么：点在地图上<strong>撒得像均匀的细沙</strong>，热力图一片平、CBD 不存在、"市中心餐饮多"这种分析结论全是假的——<strong>分析系统的好看与否，在数据生成的瞬间就决定了</strong>。</p>
+  <div class="key">真实城市的设施分布有强烈的<b>空间结构</b>：中心密度高、边缘低，沿交通线集聚，不同类别聚集规律不同（学校挨居民区、4S 店在城市边缘）。造数据 = 把这些结构写进代码。</div>
+
+  <h2 id="t2">2. 混合空间模型：25 万个点住在四种地方</h2>
+  <p><code>server/scripts/seed.js</code> 里每个 POI 的出生地由一个"抽签"决定：</p>
+  <table class="doc">
+    <tr><th>抽中概率</th><th>出生地</th><th>代码怎么写</th><th>模拟什么</th></tr>
+    <tr><td>45%</td><td>3 个 CBD 中心附近</td><td>中心点 + 高斯偏移 σ=0.008°（≈800 米）</td><td>核心商圈（极度聚集）</td></tr>
+    <tr><td>35%</td><td>6 个区中心附近</td><td>中心点 + 高斯偏移 σ=0.02°（≈2 公里）</td><td>区级生活圈</td></tr>
+    <tr><td>15%</td><td>40 条"主干道"沿线</td><td>随机取一条折线，在线上随机取点，垂向抖动 120 米</td><td>沿街商铺成串</td></tr>
+    <tr><td>5%</td><td>全域任意位置</td><td>均匀随机</td><td>乡村零星设施</td></tr>
+  </table>
+  <p>两个新词当场解释：</p>
+  <ul>
+    <li><strong>高斯偏移（正态分布）</strong>：钟形概率——离中心越近的点越多、越远越少，但不像圆盘那样"一刀切"。生活里"住公司附近的人"就是这么分布的。代码里 <code>randn()</code> 一次生成一个正态随机数；<strong>σ（西格玛）是"典型散开程度"</strong>，σ 越大越分散。</li>
+    <li><strong>沿折线采样</strong>：先造 40 条随机走向的折线当"主干道"（走向以东西/南北为主、混少量斜路），POI 先选一条路，再在线上选一个位置，最后垂直方向抖 100 来米——这就是你看到的"沿路成串"的店。</li>
+  </ul>
+
+  <h2 id="t3">3. 确定性随机：种子 20260829</h2>
+  <p>普通随机数每次运行都不同——数据变了，第 8 课那些"六边形总和必须等于 25 万"的测试就没法写死。所以 seed.js 不用 <code>Math.random()</code>，而是用<strong>种子随机</strong>（mulberry32 算法）：</p>
+  <pre><code>const rng = mulberry32(20260829);   // 播下这颗"种子"
+const rand = () =&gt; rng();           // 以后每次 rand() 得到的序列都一样</code></pre>
+  <p>种子固定 → 随机序列固定 → <strong>今天生成和明年生成，25 万个点一模一样</strong>。这带来三个好处：① 测试可以写精确断言；② 数据坏了可复现排查；③ 讲义里的每个数字（7202、44984）你都能跑出一模一样的值。</p>
+
+  <h2 id="t4">4. 26 秒灌 25 万行的秘密：COPY</h2>
+  <p>往表里塞数据有两种方式。笨办法是一条条 INSERT：<code>INSERT INTO poi.pois VALUES (...)</code>，每条都要数据库走一遍完整流程，25 万条要等上几分钟。快办法是 <strong>COPY</strong>——把数据拼成一个大文本流（CSV 样式），数据库像吸面条一样一口气吸进去：</p>
+  <pre><code>// seed.js 的真实做法（pg-copy-streams 库）
+const stream = client.query(
+  copyFrom.from('COPY poi.pois (name,category,...,geom) FROM STDIN WITH (FORMAT csv)'));
+for (每 2 万行一批) {
+  stream.write(这一批拼成的文本);      // 几何直接写 WKT：POINT(114.3 30.5)
+}
+stream.end();</code></pre>
+  <p>实测：25 万 POI 8.7 秒、8.8 万行时序 2.3 秒。<strong>批量导入永远用 COPY，这是数据库工程的常识</strong>。导完还有两步收尾：UPDATE 回填每个点属于哪个区（空间连接），ANALYZE 让数据库重新摸底统计（不摸底，优化器会瞎选执行计划）。</p>
+
+  <h2 id="t5">5. 水质时序的"剧本"</h2>
+  <p>流域平台那 8.76 万行水质数据是照着一个"剧本"演出来的——每条曲线 = 四种成分叠加：</p>
+  <table class="doc">
+    <tr><th>成分</th><th>规律</th><th>演示效果</th></tr>
+    <tr><td>季节项</td><td>冬季水温低、复氧强 → 溶解氧高</td><td>DO 曲线冬天爬高</td></tr>
+    <tr><td>昼夜项</td><td>白天光合作用产氧 → pH/DO 午后高</td><td>曲线每天一个小波浪</td></tr>
+    <tr><td><b>站点退化梯度</b></td><td>给每站一个系数 d：上游 0 → 下游 1.05，<code>氨氮 = 0.30 + 1.35×d</code></td><td>"上游 Ⅱ 类、下游 Ⅴ 类"自动成立，预警自动指向工业段</td></tr>
+    <tr><td><b>降雨冲刷事件</b></td><td>随机暴雨 → 2 小时后浊度暴涨、氨氮升高、DO 下降</td><td>降雨-水质响应图出现关联尖峰</td></tr>
+  </table>
+  <div class="note">注意剧本的巧思：<b>结论不是硬编码的</b>——代码没写"下游站是Ⅴ类"，只写了退化系数；"下游超标"是分级函数（GB 3838）作用在数据上自然涌现的。造数据的高境界：定规则，不定结论。</div>
+
+  <h2 id="t6">6. 亲手验证数据规律（3 个查询）</h2>
+  <p>空口无凭 ×2。下面三个查询逐一验证"这数据是真的像城市"：</p>
+  <h3>验证 ① 密度随离市中心距离衰减（高斯聚集）</h3>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 6-1 · 环形密度衰减</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT r AS 半径_米,
+       count(*) AS 圈内POI,
+       round((count(*) * 100.0 / 250000)::numeric, 1) AS 占比百分比
+FROM (
+  SELECT CASE
+    WHEN ST_DWithin(geom::geography, ST_MakePoint(114.305,30.593)::geography, 1000) THEN '1公里内'
+    WHEN ST_DWithin(geom::geography, ST_MakePoint(114.305,30.593)::geography, 2000) THEN '1-2公里'
+    WHEN ST_DWithin(geom::geography, ST_MakePoint(114.305,30.593)::geography, 4000) THEN '2-4公里'
+    ELSE '4公里外' END AS r
+  FROM poi.pois) t
+GROUP BY r
+ORDER BY r;</textarea>
+    <div class="pg-out">市政府这一个点的 1 公里圈就吞下 3% 的全城 POI —— 单点高密度，正是 CBD 该有的样子</div>
+  </div>
+  <h3>验证 ② 类别比例符合设计权重</h3>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 6-2 · 类别占比</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT category AS 类别,
+       count(*) AS 数量,
+       round((count(*) * 100.0 / 250000)::numeric, 1) AS 占比
+FROM poi.pois
+GROUP BY category
+ORDER BY 数量 DESC;</textarea>
+    <div class="pg-out">对照设计权重：餐饮 24% 购物 20% 生活服务 14% …… 随机抽样下比例基本吻合（略有抽样波动，正常）</div>
+  </div>
+  <h3>验证 ③ 降雨冲刷效应真实存在</h3>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 6-3 · 暴雨天 vs 无雨天</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT CASE WHEN rainfall &gt; 3 THEN '暴雨小时' ELSE '无雨小时' END AS 天气,
+       count(*) AS 样本数,
+       round(avg(turbidity)::numeric, 1) AS 平均浊度NTU,
+       round(avg(nh3_n)::numeric, 3)    AS 平均氨氮,
+       round(avg(do_mgl)::numeric, 2)   AS 平均溶解氧
+FROM basin.readings
+WHERE station_id = 9
+GROUP BY 1;</textarea>
+    <div class="pg-out">station_id=9 是工业走廊站。暴雨时浊度飙升、溶解氧下降 —— "降雨-水质响应"图的数据基础</div>
+  </div>
+
+  <h2 id="t7">7. 动手改数据 + 练习 + 打卡</h2>
+  <p><strong>真实实验：把餐饮权重从 24% 调到 40%。</strong>用记事本打开 <code>E:\zcode\server\scripts\seed.js</code>，找到约第 60 行：</p>
+  <pre><code>{ name: '餐饮', w: 0.24, ... }</code></pre>
+  <p>把 0.24 改成 0.40（别的权重不用动，抽签算法按比例自适应）。然后在 server 目录执行：</p>
+  <pre><code>npm run seed</code></pre>
+  <p>约 26 秒后重灌完成（幂等设计，随时可重来；不满意改回来再跑一遍即可）。刷新 POI 系统，饼图立刻变成"餐饮占四成"。跑一次试试，再改回来。</p>
+  <div class="warn">seed 会<b>清空并重建</b>两套系统的所有数据。你自己在库里加的测试数据会没——学习阶段无妨，正式开发要懂得先备份。</div>
+  <div class="ex">
+    <h4>练习 1（口头）</h4>
+    <p class="q">为什么造数据用"种子随机"而不是 Math.random()？</p>
+    <details><summary>查看答案</summary><div class="ans">种子固定则数据完全可复现：测试能写精确断言（六边形总和=25万）、bug 能重现、讲义数字你都能跑出同款。工程上这叫"确定性"——看似随机，实则受控。</div></details>
+  </div>
+  <div class="ex">
+    <h4>练习 2（改代码）</h4>
+    <p class="q">把 CBD 的高斯 σ 从 0.008 调成 0.03，重新 seed 后热力图会变成什么样？先在脑内预测，再实验验证。</p>
+    <details><summary>查看答案</summary><div class="ans">热团从"紧凑的三个红核"散成"三个大而模糊的暖区"（σ=0.03°≈3.3 公里，已经和区中心 σ 一样大，两个 CBD 会糊成一片）。这个实验说明：<b>σ 参数直接控制聚集强度</b>——密度分析里的"聚类尺度"在数据侧就是这个旋钮。</div></details>
+  </div>
+
+  <div class="key" style="margin-top:26px"><b>本课速查卡：</b>均匀随机=假数据 ｜ 混合模型=45% CBD高斯+35%区中心+15%沿路+5%均匀 ｜ σ=散开程度 ｜ 种子随机=可复现 ｜ 批量导入用 COPY ｜ 导完 ANALYZE ｜ 时序=季节+昼夜+退化+降雨剧本，定规则不定结论。</div>
+
+  <div class="pager">
+    <a href="lesson05.html"><span class="dir">← 上一课</span>第 5 课：地图接上 API</a>
+    <a class="next" href="lesson07.html"><span class="dir">下一课 →</span>第 7 课：Cesium 三维流域</a>
+  </div>
+</div>
+
+<script src="course.js"></script>
+</body>
+</html>

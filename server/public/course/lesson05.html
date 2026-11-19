@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 5 课 · 地图接上 API</title>
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="course.css">
+<style>
+  .mini { height: 500px; border-radius: 12px; border: 1px solid var(--line); margin: 14px 0; position: relative; }
+  .mini-chip { position: absolute; top: 10px; right: 10px; z-index: 800; background: rgba(255,255,255,.95);
+    border: 1px solid var(--line); border-radius: 8px; padding: 5px 12px; font-size: 13px; }
+  .mini-bar { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 2px; }
+  .mini-bar button { border: 1px solid var(--line); background: #fff; border-radius: 7px;
+    padding: 5px 12px; font-size: 13px; cursor: pointer; }
+  .mini-bar button.on { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .mini-bar button:hover:not(.on) { border-color: #2563eb; }
+</style>
+</head>
+<body data-lesson="05">
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>第 5 课</a>
+  <label class="done-toggle"><input type="checkbox"> 已完成本课</label>
+</div></div>
+
+<div class="wrap">
+  <h1><span class="knum">第 5 课</span>地图接上 API</h1>
+  <p class="lead">前两课的零件齐了：API 会供数（第 3 课）、地图会画点（第 4 课）。这一课把电线接上——<strong>这就是 POI 系统的完整工作原理</strong>。下面这台"迷你版"是活的：拖地图、点按钮，都是真请求真数据。</p>
+
+  <div class="mini-bar" id="catBar"></div>
+  <div class="mini">
+    <div id="miniMap" style="height:100%"></div>
+    <div class="mini-chip" id="miniChip">加载中…</div>
+  </div>
+
+  <nav class="toc">
+    <b>本课目录</b>
+    <ol>
+      <li><a href="#t1">fetch：JS 怎么调 API</a></li>
+      <li><a href="#t2">把 GeoJSON 变成圆点</a></li>
+      <li><a href="#t3">视野联动：moveend + 防抖</a></li>
+      <li><a href="#t4">迷你版完整源码走读</a></li>
+      <li><a href="#t5">动手作业 + 练习 + 打卡</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="t1">1. fetch：JS 怎么调 API</h2>
+  <p>浏览器里有个内置函数 <code>fetch</code>，专门发 HTTP 请求——它就是第 3 课"你在地址栏回车"的代码版：</p>
+  <pre><code>const res = await fetch('/api/pois/nearest?lat=30.593&amp;lng=114.305&amp;k=3');
+const data = await res.json();   // 把返回的 JSON 文本解析成 JS 对象</code></pre>
+  <p>两行，跟第 4 课的 <code>setView</code> 一样要记牢的还有三件事：</p>
+  <ul>
+    <li><code>await</code> = "等它做完再往下走"。网络请求要花时间（几十毫秒），JS 用 await 排队等结果，期间页面不卡死；</li>
+    <li><code>res</code> 是响应外壳（状态码、响应头），<code>.json()</code> 才取出内容——新手常忘了这一步直接用 res；</li>
+    <li>URL 用 <strong>相对路径</strong>（以 / 开头）就行：课程页本身就在 localhost:3000 上，不用写全称。</li>
+  </ul>
+
+  <h2 id="t2">2. 把 GeoJSON 变成圆点</h2>
+  <p>我们的 API 返回的是 <strong>GeoJSON</strong> 格式（地理数据的"世界标准"），长这样：</p>
+  <pre><code>{ "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [114.305, 30.593] },
+      "properties": { "name": "老码头火锅", "category": "餐饮", "rating": 4.6, "price": 78 }
+    }, ... ] }</code></pre>
+  <p>注意 <code>coordinates</code> 又是 <strong>[经度, 纬度]</strong>（GeoJSON 国标规定），和 Leaflet 的 [纬度, 经度] 相反——所以画点时代码长这样：</p>
+  <pre><code>for (const f of data.features) {
+  const [lng, lat] = f.geometry.coordinates;    // 解包：经度,纬度
+  const p = f.properties;
+  L.circleMarker([lat, lng], {                  // 反转成 Leaflet 顺序！
+    radius: 4, fillColor: COLORS[p.category], color: '#0b0f14', weight: .6, fillOpacity: .92
+  }).addTo(map)
+    .bindPopup(`&lt;b&gt;${p.name}&lt;/b&gt;&lt;br&gt;${p.category} · 评分 ${p.rating}`);
+}</code></pre>
+  <p>这个"经纬度反转"是 WebGIS 全行业公认的摔跤点，每写一次都提醒自己一遍。</p>
+
+  <h2 id="t3">3. 视野联动：moveend + 防抖</h2>
+  <p>POI 系统最"自动"的体验：你一拖地图，点就换成新视野里的。实现只有两行思路：</p>
+  <pre><code>map.on('moveend', scheduleRefresh);        // 每次拖动/缩放结束 → 安排刷新
+
+function scheduleRefresh() {
+  clearTimeout(timer);                     // 防抖：把上一次还没执行的刷新取消
+  timer = setTimeout(refresh, 350);        // 350ms 内没有新拖动才真正发请求
+}</code></pre>
+  <p><strong>防抖（debounce）</strong>是必须的：连续拖动会触发一串 moveend，不防抖就发一串请求，网络白耗、页面闪烁。350ms 的含义是"等用户手停下来再问"——这是前端交互的通用模式，记住手感。</p>
+  <p>刷新函数里把当前视野转成 API 参数：</p>
+  <pre><code>async function refresh() {
+  const bbox = map.getBounds().toBBoxString();   // "西,南,东,北" 正好是API要的格式
+  const qs  = new URLSearchParams({ bbox, categories: picked.join(','), limit: 2000 });
+  const data = await (await fetch('/api/pois?' + qs)).json();
+  layer.clearLayers();                    // 先清旧点再画新点（不清会越叠越多）
+  for (const f of data.features) { ... }  // 第 t2 节的画点循环
+  chip.textContent = `视野内 ${data.count} 个 POI`;   // 右上角那个数字
+}</code></pre>
+
+  <h2 id="t4">4. 迷你版完整源码走读</h2>
+  <p>把三块拼起来，就是本页顶部那台迷你系统的全部逻辑（约 70 行，<strong>建议对照着读一遍顶部的活地图，每个功能都能找到对应代码</strong>）：</p>
+  <pre><code>&lt;div id="map" style="height:100vh"&gt;&lt;/div&gt;
+&lt;div id="chip" style="position:fixed;top:10px;right:10px"&gt;&lt;/div&gt;
+&lt;link rel="stylesheet" href="/vendor/leaflet/leaflet.css"&gt;
+&lt;script src="/vendor/leaflet/leaflet.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const COLORS = { '餐饮':'#f25c54','购物':'#f7b32b','医疗':'#ef476f',
+                   '教育':'#7fb069','休闲娱乐':'#a06cd5' };
+  const picked = new Set(Object.keys(COLORS));          // 当前勾选的类别
+  const map = L.map('map').setView([30.59, 114.32], 12);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {maxZoom:16}).addTo(map);
+  const layer = L.layerGroup().addTo(map);              // 点都装这个组里，方便整体清除
+
+  let timer = null;
+  map.on('moveend', () =&gt; { clearTimeout(timer); timer = setTimeout(refresh, 350); });
+
+  async function refresh() {
+    const qs = new URLSearchParams({
+      bbox: map.getBounds().toBBoxString(),
+      categories: [...picked].join(',') || '无',
+      limit: 2000,
+    });
+    const data = await (await fetch('/api/pois?' + qs)).json();
+    layer.clearLayers();
+    for (const f of data.features) {
+      const [lng, lat] = f.geometry.coordinates, p = f.properties;
+      L.circleMarker([lat, lng], { radius: 4, fillColor: COLORS[p.category] || '#999',
+        color: '#0b0f14', weight: .6, fillOpacity: .92 })
+        .bindPopup(`&lt;b&gt;${p.name}&lt;/b&gt;&lt;br&gt;${p.category}·${p.subcategory||''}&lt;br&gt;评分 ${p.rating} · ¥${p.price}`)
+        .addTo(layer);
+    }
+    chip.textContent = '视野内 ' + data.count + ' 个 POI';
+  }
+  refresh();                                            // 开屏先刷一次
+&lt;/script&gt;</code></pre>
+  <p>对照 POI 系统（/poi）你会发现它就是这套骨架 + 更多按钮（模式切换、热力、Moran 检验）。<strong>所有"地图产品"的内核都是：视野变化 → 带参数请求 → 清层重画</strong>。</p>
+
+  <h2 id="t5">5. 动手作业 + 练习 + 打卡</h2>
+  <p>把上面"完整源码"代码块<strong>逐字复制</strong>存为 <code>E:\zcode\server\public\course\my-mini-map.html</code>（UTF-8），打开 <code>http://localhost:3000/course/my-mini-map.html</code>，确认能拖能动后做改造：</p>
+  <div class="ex">
+    <h4>作业 A（10 分钟）</h4>
+    <p class="q">给弹窗加一行人均消费，并让价格 &gt; 100 的点变大（radius: 4 改成三元表达式 <code>radius: p.price &gt; 100 ? 7 : 4</code>）。刷新后找一家高档店点开看。</p>
+    <details><summary>查看答案要点</summary><div class="ans">模板串里加 <code>&lt;br&gt;人均 ¥${p.price}</code>；radius 用 JS 的三元运算符（条件 ? 真值 : 假值）。若忘写 <code>${}</code> 会输出字面量，控制台(F12)有黄色提示。</div></details>
+  </div>
+  <div class="ex">
+    <h4>作业 B（观察思考）</h4>
+    <p class="q">把防抖 350 改成 0，快速拖动 10 次。观察右上角数字闪烁频率和流畅度差别，回答：为什么生产系统宁可慢 350ms 也要防抖？</p>
+    <details><summary>查看答案要点</summary><div class="ans">防抖为 0 时每个 moveend 都发请求——一次拖动触发 5~10 个请求，多数结果刚回来就被更新的覆盖（浪费带宽），点层反复清空重画导致闪烁。防抖用 350ms 的"延迟感"换来稳定和省流。也可以按 F12 → Network 面板直观对比请求数量。</div></details>
+  </div>
+
+  <div class="key" style="margin-top:26px"><b>本课速查卡：</b><code>await (await fetch(url)).json()</code> ｜ GeoJSON 坐标 [经,纬] → Leaflet [纬,经] ｜ <code>map.on('moveend', ...)</code> + 350ms 防抖 ｜ <code>toBBoxString()</code> 出"西,南,东,北" ｜ <code>layer.clearLayers()</code> 先清再画。</div>
+  <div class="note" style="margin-top:14px">到这里，POI 系统的两层（数据库→前端）你已经全程亲手搭过一遍了。剩三课补齐：数据怎么造（6）、三维怎么玩（7）、怎么保证质量（8）。</div>
+
+  <div class="pager">
+    <a href="lesson04.html"><span class="dir">← 上一课</span>第 4 课：第一张 Leaflet 地图</a>
+    <a class="next" href="lesson06.html"><span class="dir">下一课 →</span>第 6 课：数据从哪来</a>
+  </div>
+</div>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script>
+(function () {
+  // ===== 迷你版 POI 系统（与课文源码一致）=====
+  const COLORS = { '餐饮': '#f25c54', '购物': '#f7b32b', '医疗': '#ef476f', '教育': '#7fb069', '休闲娱乐': '#a06cd5' };
+  const picked = new Set(Object.keys(COLORS));
+  const map = L.map('miniMap').setView([30.59, 114.32], 12);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16, attribution: '© Esri' }).addTo(map);
+  const layer = L.layerGroup().addTo(map);
+  const chip = document.getElementById('miniChip');
+
+  // 类别按钮
+  const bar = document.getElementById('catBar');
+  for (const cat of Object.keys(COLORS)) {
+    const b = document.createElement('button');
+    b.textContent = cat; b.className = 'on';
+    b.addEventListener('click', () => {
+      picked.has(cat) ? picked.delete(cat) : picked.add(cat);
+      b.classList.toggle('on', picked.has(cat));
+      refresh();
+    });
+    bar.appendChild(b);
+  }
+
+  let timer = null;
+  map.on('moveend', () => { clearTimeout(timer); timer = setTimeout(refresh, 350); });
+
+  async function refresh() {
+    chip.textContent = '查询中…';
+    const qs = new URLSearchParams({
+      bbox: map.getBounds().toBBoxString(),
+      categories: picked.size ? [...picked].join(',') : '——无匹配类别——',
+      limit: 2000,
+    });
+    try {
+      const data = await (await fetch('/api/pois?' + qs)).json();
+      layer.clearLayers();
+      for (const f of data.features) {
+        const [lng, lat] = f.geometry.coordinates, p = f.properties;
+        L.circleMarker([lat, lng], {
+          radius: 4, fillColor: COLORS[p.category] || '#999',
+          color: '#0b0f14', weight: .6, fillOpacity: .92,
+        }).bindPopup(`<b>${p.name}</b><br>${p.category} · ${p.subcategory || ''}<br>评分 ${p.rating} · ¥${p.price}`).addTo(layer);
+      }
+      chip.textContent = `视野内 ${data.count.toLocaleString()} 个 POI${data.count >= 2000 ? '（显示前2000）' : ''}`;
+    } catch (e) { chip.textContent = 'API 调用失败'; }
+  }
+  refresh();
+})();
+</script>
+</body>
+</html>

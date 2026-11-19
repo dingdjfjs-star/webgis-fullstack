@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 3 课 · 把 SQL 变成 API</title>
+<link rel="stylesheet" href="course.css">
+</head>
+<body data-lesson="03">
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>第 3 课</a>
+  <label class="done-toggle"><input type="checkbox"> 已完成本课</label>
+</div></div>
+
+<div class="wrap">
+  <h1><span class="knum">第 3 课</span>把 SQL 变成 API</h1>
+  <p class="lead">前两课你写的 SQL 只有你自己能用。这一课学会把它包装成"网页也能调用的服务"——这就是后端 API。学完你将亲手给系统添加一个新接口。</p>
+
+  <nav class="toc">
+    <b>本课目录</b>
+    <ol>
+      <li><a href="#t1">API 是什么：餐厅比喻</a></li>
+      <li><a href="#t2">HTTP 一分钟：URL、参数、GET</a></li>
+      <li><a href="#t3">调真实接口（点链接就能玩）</a></li>
+      <li><a href="#t4">读懂真实路由代码</a></li>
+      <li><a href="#t5">亲手加一个端点（本课大作业）</a></li>
+      <li><a href="#t6">练习 + 打卡</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="t1">1. API 是什么：餐厅比喻</h2>
+  <p>浏览器（前端）和数据库之间隔着一层，谁也不直接见谁——就像顾客不会冲进后厨端菜。中间的服务员就是 <strong>API</strong>：</p>
+  <div class="demo">
+    <div class="rowflow">
+      <div class="r"><b>顾客</b><span>"来一份火锅，微辣" —— 按菜单点</span><span class="v">前端</span></div>
+      <div class="r" style="padding-left:34px">↓ 递单子（HTTP 请求）</div>
+      <div class="r"><b>服务员</b><span>听懂需求 → 去后厨 → 把菜端回来装盘</span><span class="v">API（本课）</span></div>
+      <div class="r" style="padding-left:34px">↓ SELECT ... </div>
+      <div class="r"><b>后厨</b><span>真正做菜的地方，顾客看不见</span><span class="v">数据库</span></div>
+    </div>
+    <div class="cap">菜单 = 接口文档；点单 = 发请求；装盘上菜 = 返回 JSON 数据</div>
+  </div>
+  <p>关键理解：API 暴露的是<strong>有限的服务项目</strong>（菜单上没有的做不了），并且<strong>把内部的 SQL 细节藏起来</strong>。前端不需要会 SQL，只需要知道"点哪道菜、给什么参数"。</p>
+
+  <h2 id="t2">2. HTTP 一分钟：URL、参数、GET</h2>
+  <p>浏览器和 API 之间的对话协议叫 HTTP。最常用的是 <strong>GET 请求</strong>——就是"在地址栏输入网址回车"那个动作。一个完整的 URL 长这样：</p>
+  <pre><code>http://localhost:3000/api/pois/nearest?lat=30.593&amp;lng=114.305&amp;k=3
+└──────┬─────┘└──────┬───────┘└────────┬────────────────────┘
+     电脑+端口      路径(哪道菜)      查询参数(口味要求)
+                                      ?参数名=值&amp;参数名=值</code></pre>
+  <p>三段式：<strong>主机</strong>（找谁）→ <strong>路径</strong>（哪道菜）→ <strong>查询参数</strong>（具体要求）。参数可以有多个，用 <code>&amp;</code> 连接。API 收到请求后返回数据——现代 Web 返回的几乎都是 <strong>JSON</strong> 格式（长得像 JS 对象的文本，花括号+键值对）。</p>
+
+  <h2 id="t3">3. 调真实接口（点链接就能玩）</h2>
+  <p>我们系统的 API 已经在跑了。<strong>下面每行文字都是真实链接，点开就在浏览器里完成了一次 API 调用</strong>（返回原始 JSON——浏览器就是最朴素的 API 调试工具）：</p>
+  <table class="doc">
+    <tr><th>这道菜</th><th>点单链接</th></tr>
+    <tr><td>离市政府最近的 3 家店（KNN）</td><td><a href="/api/pois/nearest?lat=30.593&lng=114.305&k=3" target="_blank">/api/pois/nearest?lat=30.593&amp;lng=114.305&amp;k=3</a></td></tr>
+    <tr><td>市政府 1 公里缓冲区统计</td><td><a href="/api/pois/buffer?lat=30.593&lng=114.305&r=1000" target="_blank">/api/pois/buffer?lat=30.593&amp;lng=114.305&amp;r=1000</a></td></tr>
+    <tr><td>全城分类统计</td><td><a href="/api/pois/summary?bbox=114.08,30.44,114.56,30.72" target="_blank">/api/pois/summary?bbox=...</a></td></tr>
+    <tr><td>流域全部监测站</td><td><a href="/api/basin/stations" target="_blank">/api/basin/stations</a></td></tr>
+  </table>
+  <p>做两件事加深体感：① 把 <code>k=3</code> 改成 <code>k=10</code> 再回车；② 把 <code>lat</code> 随便改个数，观察返回的 <code>dist_m</code> 怎么变。<strong>你正在做的事，和 POI 系统前端背后做的事一模一样</strong>——只不过它用代码调，你用鼠标调。</p>
+  <div class="note"><b>bbox 是什么？</b>bounding box（范围框），4 个数字"西,南,东,北"围出一个矩形——就是地图当前视野。POI 系统里你每拖一下地图，前端就发一个新 bbox 的请求。</div>
+
+  <h2 id="t4">4. 读懂真实路由代码</h2>
+  <p>这些接口是谁写的？就是普通 JS 文件。<code>server/src/routes/pois.js</code> 里"最近邻"接口长这样（简化了过滤逻辑，骨架原样）：</p>
+  <pre><code>pois.get('/nearest', async (req, res, next) =&gt; {
+  try {
+    const { lat, lng } = req.query;      // ① 从 URL 取参数
+    const k = Math.min(+(req.query.k || 10), 50);  // ② 默认10个，最多50
+    const p = [+lng, +lat];              // ③ 参数数组（$1,$2 占位）
+    const { rows } = await query(
+      `SELECT name, ST_X(geom) x, ST_Y(geom) y,
+              ST_Distance(geom::geography,
+                ST_Point($1,$2,4326)::geography)::int AS dist_m
+       FROM poi.pois
+       ORDER BY geom &lt;-&gt; ST_Point($1,$2,4326)
+       LIMIT $3`, [...p, k]);            // ④ 执行 SQL（第2课的KNN！）
+    res.json({ type: 'FeatureCollection', features: ... }); // ⑤ 装盘返回
+  } catch (e) { next(e); }               // ⑥ 出错交给统一错误处理
+});</code></pre>
+  <p>逐个零件认识：</p>
+  <table class="doc">
+    <tr><th>代码</th><th>意思</th></tr>
+    <tr><td class="mono">pois.get('/nearest', fn)</td><td>注册一条规则：GET /api/pois/nearest 的请求由这个函数处理（get 是"查询"，新建数据会用 post）</td></tr>
+    <tr><td class="mono">req.query</td><td>URL 里 ? 后面的参数，打包成的对象；req 是"请求"</td></tr>
+    <tr><td class="mono">$1, $2, $3</td><td><b>参数化查询</b>占位符。值不拼进 SQL 字符串而是单独传——防 SQL 注入攻击，也自动处理引号</td></tr>
+    <tr><td class="mono">res.json(数据)</td><td>把结果转成 JSON 返回给调用方；res 是"响应"</td></tr>
+    <tr><td class="mono">try/catch/next(e)</td><td>出错时不让服务崩溃，转给统一的错误处理器返回 500</td></tr>
+  </table>
+  <div class="key">看懂这个函数，你就看懂了整个后端：所有 19 个接口都是这个骨架，只是 SQL 不同。后端开发 = <b>收参数 → 拼 SQL → 返回 JSON</b> 三板斧。</div>
+
+  <h2 id="t5">5. 亲手加一个端点（本课大作业）</h2>
+  <p>光看不算会。现在给系统<strong>真的加一个新接口</strong>：<code>GET /api/pois/count</code> —— 返回视野内的 POI 数量（POI 系统右上角那个数字就是它的原型）。</p>
+  <h3>第 1 步：打开文件</h3>
+  <p>用记事本（或 VS Code）打开 <code>E:\zcode\server\src\routes\pois.js</code>，拉到<strong>文件最末尾</strong>，粘贴这段代码：</p>
+  <pre><code>/** 【第3课练习】视野内 POI 计数：GET /api/pois/count?bbox=&amp;categories= */
+pois.get('/count', async (req, res, next) =&gt; {
+  try {
+    const p = [];
+    const c = [];
+    if (req.query.bbox) {
+      const [minx, miny, maxx, maxy] = String(req.query.bbox).split(',').map(Number);
+      p.push(minx, miny, maxx, maxy);
+      c.push(`p.geom &amp;&amp; ST_MakeEnvelope($1,$2,$3,$4,4326)`);
+    }
+    if (req.query.categories) {
+      p.push(String(req.query.categories).split(','));
+      c.push(`p.category = ANY($${p.length})`);
+    }
+    const where = c.length ? 'WHERE ' + c.join(' AND ') : '';
+    const { rows } = await query(
+      `SELECT count(*)::int AS cnt FROM poi.pois p ${where}`, p);
+    res.json({ count: rows[0].cnt });
+  } catch (e) { next(e); }
+});</code></pre>
+  <p>这段代码你已经全都见过：bbox 拆成 4 个数（第 3 课）、<code>&amp;&amp;</code> 范围相交（第 2 课）、参数化占位符（本课）、GROUP BY 都不需要因为只要总数（第 1 课）。</p>
+  <h3>第 2 步：重启服务</h3>
+  <p>Node 不会自动感知代码变化：找到 server 那个黑窗口，按 <strong>Ctrl+C</strong> 停掉，重新运行 <code>E:\zcode\scripts\start-all.bat</code>（或那个窗口里 <code>npm start</code>）。</p>
+  <h3>第 3 步：验收</h3>
+  <p>浏览器打开（保存后这是真实链接，前提是你完成了第 1、2 步）：</p>
+  <pre><code>http://localhost:3000/api/pois/count?bbox=114.08,30.44,114.56,30.72
+http://localhost:3000/api/pois/count?bbox=114.08,30.44,114.56,30.72&amp;categories=餐饮</code></pre>
+  <p>第一条应返回 <code>{"count":250000}</code>（全城），第二条约 6 万（餐饮约占 24%）。看到数字，恭喜——<strong>你已经是能给系统添加接口的人了</strong>。</p>
+  <div class="pit">改了代码没重启 → 接口 404；重启了还是 404 → 检查代码是不是粘到了文件末尾、<code>pois.get</code> 有没有拼错。看 server 黑窗口的报错信息，第一行通常直接指出错在第几行。</div>
+
+  <h2 id="t6">6. 练习 + 打卡</h2>
+  <div class="ex">
+    <h4>练习 1（浏览器完成）</h4>
+    <p class="q">调 <a href="/api/basin/stations" target="_blank">/api/basin/stations</a>，在返回的 JSON 里数一数：grade 为 5（Ⅴ 类，红色预警站）的有几个站？它们的名字是？</p>
+    <details><summary>查看答案</summary><div class="ans">2 个：<b>临江·工业走廊站</b>（WQ009）和 <b>临江·入湖口站</b>（WQ010）——正好是数据设计时"下游工业段退化最严重"的两站。真实工作里这个"从 JSON 里找信息"的活，以后就是前端代码用 JS 自动干的。</div></details>
+  </div>
+  <div class="ex">
+    <h4>练习 2（改代码）</h4>
+    <p class="q">给刚写的 /count 端点再加一个参数：<code>&amp;kw=医院</code> 时只统计名字/子类含"医院"的。提示：照抄 categories 的写法，条件用 <code>(p.name ILIKE $n OR p.subcategory ILIKE $n)</code>，ILIKE 是不区分大小写的模糊匹配（%配任意字）。</p>
+    <details><summary>查看答案</summary><div class="ans"><pre style="margin:8px 0"><code>if (req.query.kw) {
+  p.push(`%${req.query.kw}%`);
+  c.push(`(p.name ILIKE $${p.length} OR p.subcategory ILIKE $${p.length})`);
+}</code></pre>改完重启，访问 ?bbox=全城&amp;kw=医院 应约 4000+ 个。注意同一个占位符 $n 只能对应一个参数，所以值要 push 两次。</div></details>
+  </div>
+
+  <div class="key" style="margin-top:26px"><b>本课速查卡：</b>URL = 主机+路径+<code>?参数</code> ｜ GET=查询 ｜ 返回 JSON ｜ 路由骨架 = req.query 收参 → 参数化 SQL → res.json ｜ 改代码必须重启 ｜ 参数化 $1 防 SQL 注入。</div>
+
+  <div class="pager">
+    <a href="lesson02.html"><span class="dir">← 上一课</span>第 2 课：排序、最近邻与索引</a>
+    <a class="next" href="lesson04.html"><span class="dir">下一课 →</span>第 4 课：第一张 Leaflet 地图</a>
+  </div>
+</div>
+
+<script src="course.js"></script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+:root {
+  --bg: #0f151d; --panel: #151d28; --panel2: #1b2532; --line: #243244;
+  --txt: #dbe4ee; --txt2: #8fa1b5; --accent: #38bdf8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { display: flex; font-family: "Microsoft YaHei", system-ui, sans-serif; background: var(--bg); color: var(--txt); }
+
+/* ---------- 侧栏 ---------- */
+#sidebar { width: 320px; min-width: 320px; height: 100%; background: var(--panel); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; overflow-y: auto; z-index: 900; }
+#sidebar header { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+#sidebar h1 { font-size: 17px; letter-spacing: .5px; }
+#sidebar .sub { font-size: 11px; color: var(--txt2); margin-top: 6px; line-height: 1.5; }
+#sidebar section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+#sidebar h2 { font-size: 13px; color: var(--accent); margin-bottom: 8px; font-weight: 600; }
+#sidebar footer { margin-top: auto; padding: 10px 16px; font-size: 11px; color: var(--txt2); border-top: 1px solid var(--line); }
+.hint { font-size: 11px; color: var(--txt2); font-weight: 400; }
+
+.modes { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.mode-btn { padding: 8px 4px; background: var(--panel2); color: var(--txt); border: 1px solid var(--line);
+  border-radius: 6px; cursor: pointer; font-size: 12px; }
+.mode-btn:hover { border-color: var(--accent); }
+.mode-btn.active { background: #0c3a52; border-color: var(--accent); color: var(--accent); }
+
+.cat-list { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.cat-item { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; cursor: pointer; user-select: none; }
+.cat-item input { accent-color: var(--accent); }
+.cat-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.cat-item.off { opacity: .35; }
+.row-btns { margin-top: 8px; display: flex; gap: 6px; }
+.row-btns button, .search-row button, .mini { flex: 0 0 auto; padding: 5px 10px; background: var(--panel2); color: var(--txt);
+  border: 1px solid var(--line); border-radius: 5px; cursor: pointer; font-size: 12px; }
+.row-btns button:hover, .search-row button:hover, .mini:hover { border-color: var(--accent); color: var(--accent); }
+
+.search-row { display: flex; gap: 6px; }
+.search-row input, .search-row select { flex: 1; min-width: 0; padding: 6px 8px; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 5px; color: var(--txt); font-size: 12px; outline: none; }
+.search-row input:focus { border-color: var(--accent); }
+
+.result-list { list-style: none; margin-top: 8px; max-height: 180px; overflow-y: auto; }
+.result-list li { font-size: 12px; padding: 5px 6px; border-radius: 4px; cursor: pointer; display: flex; justify-content: space-between; gap: 6px; }
+.result-list li:hover { background: var(--panel2); }
+.result-list .d { color: var(--txt2); }
+
+#buf-result table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+#buf-result td, #buf-result th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+#buf-result td:last-child, #buf-result th:last-child { text-align: right; }
+#buf-result .total { color: var(--accent); }
+
+/* ---------- 地图 ---------- */
+#map { flex: 1; height: 100%; background: #0b0f14; }
+#map-chip { position: absolute; top: 12px; right: 12px; z-index: 800; background: rgba(21,29,40,.92);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: 12px; pointer-events: none; }
+.leaflet-container { font: inherit; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--txt); }
+.leaflet-popup-content b { color: var(--accent); }
+
+/* ---------- 图表面板 ---------- */
+#charts-panel { position: absolute; top: 0; right: 0; width: 330px; height: 100%; background: rgba(21,29,40,.96);
+  border-left: 1px solid var(--line); z-index: 850; padding: 14px; overflow-y: auto;
+  transform: translateX(110%); transition: transform .25s; }
+#charts-panel.open { transform: none; }
+#panel-toggle { position: absolute; top: 12px; right: 12px; z-index: 860; background: rgba(21,29,40,.92);
+  border: 1px solid var(--line); border-radius: 6px; color: var(--txt); padding: 6px 10px; font-size: 12px; cursor: pointer; }
+#panel-toggle.open { right: 342px; }
+.chart-box { margin-bottom: 14px; }
+.chart-box h3 { font-size: 13px; color: var(--accent); margin-bottom: 6px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+.chart { width: 300px; height: 220px; }
+.moran-card { font-size: 12px; line-height: 1.9; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; }
+.moran-card b { color: var(--accent); font-size: 15px; }
+.moran-card .sig { padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+
+#legend { position: absolute; left: 12px; bottom: 12px; z-index: 800; background: rgba(21,29,40,.92);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; font-size: 11px; line-height: 1.8; }

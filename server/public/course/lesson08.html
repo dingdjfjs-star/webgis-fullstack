@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 8 课 · 测试与性能（毕业课）</title>
+<link rel="stylesheet" href="course.css">
+</head>
+<body data-lesson="08">
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>第 8 课</a>
+  <label class="done-toggle"><input type="checkbox"> 已完成本课</label>
+</div></div>
+
+<div class="wrap">
+  <h1><span class="knum">第 8 课</span>测试与性能（毕业课）</h1>
+  <p class="lead">前 7 课你把系统"搭出来"了，毕业课教你怎么证明它"靠得住"：改完代码怎么知道没弄坏别处？性能数字怎么来的？最后给你留一个毕业项目。</p>
+
+  <nav class="toc">
+    <b>本课目录</b>
+    <ol>
+      <li><a href="#t1">为什么要测试</a></li>
+      <li><a href="#t2">我们的 16 条测试长什么样</a></li>
+      <li><a href="#t3">性能基准：索引快 100 倍是怎么量出来的</a></li>
+      <li><a href="#t4">一次真实的调优复盘</a></li>
+      <li><a href="#t5">毕业项目</a></li>
+      <li><a href="#t6">结业清单 + 打卡</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="t1">1. 为什么要测试</h2>
+  <p>场景：你给 /count 端点加了个参数（第 3 课作业），手一滑把别的 SQL 改错了。界面上东点点西点点，看起来都正常——但"最近设施检索"悄悄坏了。没有测试，这种 bug 可能两周后才被用户发现。</p>
+  <div class="key">测试 = 写一段代码，<b>自动调用你的接口并检查结果对不对</b>。每次改完代码跑一遍，几秒钟内知道有没有弄坏东西。它不是额外负担，是让你<b>敢于改代码</b>的安全网。</div>
+
+  <h2 id="t2">2. 我们的 16 条测试长什么样</h2>
+  <p>测试文件在 <code>server/test/api.test.js</code>，用 Node 自带的测试器（不用装任何东西）。跑法：</p>
+  <pre><code>cd E:\zcode\server
+npm test</code></pre>
+  <p>输出长这样（你以后看到的应该全是 ✔）：</p>
+  <pre><code>✔ 健康检查返回 PostGIS 版本 (105.0ms)
+✔ 视野 POI 查询：GeoJSON 结构与上限约束 (10.4ms)
+✔ 六边形密度：格网计数总和等于 POI 总数 (595.9ms)
+✔ 全局 Moran's I：显著空间聚集 (492.1ms)
+...
+ℹ tests 16  ℹ pass 16  ℹ fail 0</code></pre>
+  <p>单个测试的写法（Node 自带 <code>node:test</code> + <code>assert</code> 断言库）：</p>
+  <pre><code>import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+test('KNN 最近邻：按距离递增返回', async () =&gt; {
+  const res = await fetch('http://localhost:3000/api/pois/nearest?lat=30.593&amp;lng=114.305&amp;k=5');
+  const body = await res.json();
+  assert.equal(body.features.length, 5);              // 断言1：正好5条
+  const d = body.features.map(f =&gt; f.properties.dist_m);
+  for (let i = 1; i &lt; d.length; i++)
+    assert.ok(d[i] &gt;= d[i-1] - 1e-6);                 // 断言2：距离不递减
+});</code></pre>
+  <p>真正值得学的不是语法，是<strong>断言什么</strong>。我们不满足于"返回 200"，而是断言<strong>业务不变量</strong>——无论代码怎么改、数据怎么重灌都该成立的事实：</p>
+  <table class="doc">
+    <tr><th>不变量</th><th>抓住什么 bug</th></tr>
+    <tr><td class="mono">六边形格网计数总和 == 250000</td><td>聚合 SQL 少算/漏掉点（比如 LEFT JOIN 写成 JOIN 丢点）</td></tr>
+    <tr><td class="mono">KNN 结果距离单调不减</td><td>排序写错、索引误用</td></tr>
+    <tr><td class="mono">上游站等级 &lt; 下游站等级</td><td>GB3838 分级方向写反（我们在开发中真犯过这个错！）</td></tr>
+    <tr><td class="mono">缓冲区源 dist_m ≤ 查询半径</td><td>距离单位/类型错误</td></tr>
+  </table>
+  <p>这些断言之所以敢写死数字，靠的正是第 6 课的<strong>种子随机</strong>——数据可复现，结果才可断言。课程里的知识是咬合在一起的。</p>
+
+  <h2 id="t3">3. 性能基准：索引快 100 倍是怎么量出来的</h2>
+  <p>第 2 课给过一张表（KNN 快 100×），它由 <code>server/test/bench.js</code> 生成：</p>
+  <pre><code>npm run bench</code></pre>
+  <p>基准方法学（这三步是业界通用的）：① 同一条 SQL 在正常态跑 5 次取<strong>中位数</strong>（排除偶发抖动）；② 用 <code>SET enable_indexscan=off</code> 等开关逼数据库走全表扫描再跑 5 次；③ 两边相除得加速比，结果落盘成 Markdown 表（<code>docs/perf.md</code>）。</p>
+  <div class="note">为什么取中位数而不是平均值：慢的那几次可能被磁盘缓存、后台进程干扰，中位数抗离群值。做性能对比时永远多跑几次。</div>
+
+  <h2 id="t4">4. 一次真实的调优复盘</h2>
+  <p>给你讲一个本系统开发时真实发生的性能事故，比理论课有用十倍：</p>
+  <p><strong>现象</strong>：缓冲区分析（1 公里圈）要 268ms，基准显示它和全表扫描差不多快——索引形同虚设。</p>
+  <p><strong>排查</strong>：EXPLAIN 一看，走的是 Seq Scan。为什么？SQL 写的是 <code>WHERE ST_DWithin(geom::geography, ...)</code>——在<strong>列上做类型转换</strong>。索引目录是按 geom 原样编的，"变形后的列"对不上号，优化器只好放弃目录。</p>
+  <p><strong>药方</strong>：为变形后的形态单独建一本目录——<strong>表达式索引</strong>：</p>
+  <pre><code>CREATE INDEX pois_geom_geog_gist ON poi.pois USING gist ((geom::geography));</code></pre>
+  <p><strong>疗效</strong>：268ms → 100ms（2.4×）。这条经验被写进了建库 SQL 的注释里，也写进了课程的坑卡。</p>
+  <div class="key">通用方法论：<b>感觉慢 → EXPLAIN 看计划 → 发现 Seq Scan → 查"列有没有被函数/转换包裹" → 建匹配的表达式索引 → 再 EXPLAIN 验证 → 用基准记录前后对比</b>。面试里能完整讲出这个链条，比背十个名词值钱。</div>
+
+  <h2 id="t5">5. 毕业项目</h2>
+  <p>三个题目选一个（推荐第 1 个），做出你自己的全流程系统：</p>
+  <div class="ex">
+    <h4>题目 A：某市共享单车停放点空间分布分析 ⭐推荐</h4>
+    <p class="q">表：停放点（点，含车辆数/类型）、行政区（面）、早晚潮汐计数（时序）。分析：热点格网、各行政区供给均衡度、地铁站 300 米覆盖率（ST_DWithin）。前端：Leaflet 聚合 + 覆盖圈。</p>
+  </div>
+  <div class="ex">
+    <h4>题目 B：学区覆盖分析</h4>
+    <p class="q">表：学校（点，含学位数）、小区（点，含户数）、学区划分。分析：每个小区最近学校（KNN）、学位供需比按区聚合、2 公里入学圈覆盖率。</p>
+  </div>
+  <div class="ex">
+    <h4>题目 C：污染源溯源辅助</h4>
+    <p class="q">在现有流域库上扩展：某站超标时，找出其上游 5 公里内全部污染源（沿河线缓冲+方向判断），按负荷排序输出"嫌疑清单"。</p>
+  </div>
+  <p>无论选哪个，<strong>验收标准</strong>都是这套（也是真实工作的交付清单）：</p>
+  <ul>
+    <li>建表 SQL（含空间索引 + 一条"为什么建这个索引"的注释）</li>
+    <li>种子数据（种子随机、有空间规律、≥5 万行）</li>
+    <li>≥2 个分析端点（参数化查询、错误处理）</li>
+    <li>1 个地图页（视野联动 + 弹窗）</li>
+    <li>≥3 条含业务不变量的测试，全部通过</li>
+    <li>README：一段架构图 + 一张性能对比表</li>
+  </ul>
+  <p>做完后对我说「批改毕业项目」，我按这个清单逐项检查。</p>
+
+  <h2 id="t6">6. 结业清单 + 打卡</h2>
+  <p>对照一下，9 个格子里你现在有几个 ✓：</p>
+  <table class="doc">
+    <tr><th>能力</th><th>来自</th><th>自评</th></tr>
+    <tr><td>用 SQL 问空间问题（距离/范围/分组）</td><td>第 1、2 课</td><td>□</td></tr>
+    <tr><td>用 EXPLAIN 诊断慢查询</td><td>第 2、8 课</td><td>□</td></tr>
+    <tr><td>读懂并编写 Express 接口</td><td>第 3 课</td><td>□</td></tr>
+    <tr><td>从零做一张可交互地图</td><td>第 4、5 课</td><td>□</td></tr>
+    <tr><td>造有空间规律的可复现数据</td><td>第 6 课</td><td>□</td></tr>
+    <tr><td>三维场景与点击拾取</td><td>第 7 课</td><td>□</td></tr>
+    <tr><td>用业务不变量写测试</td><td>第 8 课</td><td>□</td></tr>
+    <tr><td>独立完成一个小型全流程系统</td><td>毕业项目</td><td>□</td></tr>
+  </table>
+  <div class="key">学完不等于会做。真正的毕业标准只有一个：<b>关掉这门课，给你一个新需求，你能独立把"建表→造数→API→地图→测试"整条流水线跑通</b>。毕业项目就是那个证明。</div>
+
+  <div class="pager">
+    <a href="lesson07.html"><span class="dir">← 上一课</span>第 7 课：Cesium 三维流域</a>
+    <a class="next" href="index.html"><span class="dir">回到 →</span>课程目录（开始毕业项目吧）</a>
+  </div>
+</div>
+
+<script src="course.js"></script>
+</body>
+</html>

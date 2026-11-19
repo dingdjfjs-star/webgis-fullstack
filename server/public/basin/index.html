@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>临江流域生态环境监测平台</title>
+<link rel="stylesheet" href="/vendor/cesium/Widgets/widgets.css">
+<link rel="stylesheet" href="css/app.css">
+<script src="/vendor/cesium/Cesium.js"></script>
+<script src="/vendor/echarts/echarts.min.js"></script>
+</head>
+<body>
+<div id="cesiumContainer"></div>
+
+<aside id="panel">
+  <header>
+    <h1>临江流域生态环境监测平台</h1>
+    <p class="sub">PostGIS 空间数据库 · Node.js API · Cesium 三维可视化 ｜ 数据为模拟生成</p>
+    <p class="link-row"><a href="/poi">← 返回 POI 空间分析系统</a></p>
+  </header>
+
+  <section id="overview-box">
+    <h2>流域概况</h2>
+    <div id="overview-stats" class="stats">加载中…</div>
+    <div id="chart-grade" class="chart-sm"></div>
+  </section>
+
+  <section>
+    <h2>超标预警 <span id="alert-count" class="badge"></span></h2>
+    <ul id="alert-list" class="station-list"></ul>
+  </section>
+
+  <section>
+    <h2>监测站点 <span class="hint">点击定位 / 查看曲线</span></h2>
+    <ul id="station-list" class="station-list"></ul>
+  </section>
+
+  <footer id="status">就绪</footer>
+</aside>
+
+<section id="detail">
+  <button id="detail-close">✕</button>
+  <h2 id="detail-title">站点详情</h2>
+  <div id="detail-meta"></div>
+  <div id="chart-series" class="chart"></div>
+  <h3>降雨 — 水质响应（逐小时）</h3>
+  <div id="chart-rain" class="chart"></div>
+</section>
+
+<div id="toolbar">
+  <label><input type="checkbox" id="cb-sources" checked> 污染源</label>
+  <label><input type="checkbox" id="cb-riverlabels" checked> 河流标注</label>
+  <label><input type="checkbox" id="cb-boundary" checked> 流域边界</label>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 4 课 · 第一张 Leaflet 地图</title>
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="course.css">
+<style>
+  .lmap { height: 420px; border-radius: 12px; border: 1px solid var(--line); margin: 14px 0; }
+  .lmap .leaflet-container { font: inherit; }
+</style>
+</head>
+<body data-lesson="04">
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>第 4 课</a>
+  <label class="done-toggle"><input type="checkbox"> 已完成本课</label>
+</div></div>
+
+<div class="wrap">
+  <h1><span class="knum">第 4 课</span>第一张 Leaflet 地图</h1>
+  <p class="lead">换楼层了：前 3 课在数据库层，这课爬到浏览器层。目标：亲手做出一张能拖、能缩放、带标记点的地图——就像下面这张，本课结束时你能说清它每一行是怎么来的。</p>
+
+  <div id="live1" class="lmap"></div>
+
+  <nav class="toc">
+    <b>本课目录</b>
+    <ol>
+      <li><a href="#t1">网页三件套 60 秒</a></li>
+      <li><a href="#t2">Leaflet 与底图瓦片原理</a></li>
+      <li><a href="#t3">20 行代码的最小地图</a></li>
+      <li><a href="#t4">画标记点和弹窗</a></li>
+      <li><a href="#t5">动手作业：做出你自己的地图</a></li>
+      <li><a href="#t6">练习 + 打卡</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="t1">1. 网页三件套 60 秒</h2>
+  <p>网页由三种文件分工构成，记住这个比喻：</p>
+  <table class="doc">
+    <tr><th>技术</th><th>分工</th><th>比喻</th></tr>
+    <tr><td><b>HTML</b></td><td>页面里有什么内容（标题、按钮、地图容器）</td><td>毛坯房：墙和门洞</td></tr>
+    <tr><td><b>CSS</b></td><td>内容长什么样（颜色、大小、位置）</td><td>装修：刷漆铺地板</td></tr>
+    <tr><td><b>JavaScript (JS)</b></td><td>内容怎么动（点击后干什么、数据加载）</td><td>水电与家电：让房子"活"起来</td></tr>
+  </table>
+  <p>浏览器加载网页时读到一个 <code>&lt;script&gt;</code> 标签就会执行里面的 JS 代码。地图也是 JS 库画出来的——本课的主角 <strong>Leaflet</strong> 就是一个开源 JS 地图库（我们系统已经把它下载到本地 <code>/vendor/leaflet/</code>，演示不依赖外网）。</p>
+
+  <h2 id="t2">2. Leaflet 与底图瓦片原理</h2>
+  <p>先破除一个误解：<strong>地图上那些街道、河流背景不是 Leaflet 画的</strong>，它们是一张张 256×256 像素的小图片，叫<strong>瓦片（tile）</strong>，由底图服务器提供。Leaflet 做的事是：算出当前视野需要哪些瓦片、下载、拼到位，再让你拖动缩放。</p>
+  <p>瓦片的地址规律（看一眼底图 URL 就懂了）：</p>
+  <pre><code>https://server.arcgisonline.com/.../World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}
+                                                        缩放级别 ─┘ └┬┘ └┬┘
+                                                          行号 ────┘   列号</code></pre>
+  <p>级别 z=0 时全世界是一张图；每升一级，格子数翻两番（×4），细节多一倍。你缩放地图时，Leaflet 就在批量请求 <code>z/x/y</code> 各不相同的图片 URL。我们选的 Esri 深灰底图<strong>免费、不要 API Key</strong>（注意路径里是 <code>{z}/{y}/{x}</code>，行在前——每家服务顺序可能不同，写错瓦片就全歪）。</p>
+
+  <h2 id="t3">3. 20 行代码的最小地图</h2>
+  <p>一张地图只需要：一个 HTML 容器 div + 四行 JS。完整网页如下（<strong>这就是本页顶部那张地图的源码</strong>）：</p>
+  <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html lang="zh-CN"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"&gt;
+  &lt;title&gt;我的第一张地图&lt;/title&gt;
+  &lt;!-- Leaflet 的"装修"（样式）和"家电"（功能库） --&gt;
+  &lt;link rel="stylesheet" href="/vendor/leaflet/leaflet.css"&gt;
+  &lt;script src="/vendor/leaflet/leaflet.js"&gt;&lt;/script&gt;
+  &lt;style&gt; #map { height: 100vh; } &lt;/style&gt;   &lt;!-- 地图铺满全屏 --&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div id="map"&gt;&lt;/div&gt;                       &lt;!-- 毛坯房：给地图留个容器 --&gt;
+  &lt;script&gt;
+    // L 是 Leaflet 暴露的全局对象，一切从它开始
+    const map = L.map('map').setView([30.59, 114.32], 12);   // 纬度,经度！和SQL相反
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      attribution: '© Esri'
+    }).addTo(map);                                            // 铺底图
+  &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+  <p>三个新手必坑提前挑明：</p>
+  <div class="pit"><b>坑 1：坐标顺序是 [纬度, 经度]！</b>Leaflet 的 setView 用 [lat, lng]，和数据库 POINT(经度 纬度) <b>正好相反</b>——写反了地图会飞到"东非高原"附近，因为 (114, 30) 当纬纬度解释就是"东经30度北纬114度"，落海底了。</div>
+  <div class="pit"><b>坑 2：容器必须有高度。</b>div 默认高度 0，CSS 不写 <code>height</code> 地图就是空白一片（和第 7 课 Cesium 黑屏是同一个道理）。</div>
+  <div class="pit"><b>坑 3：页面必须通过 http:// 访问。</b>直接双击 html 文件（file://）部分浏览器功能受限。我们存到课程目录用 localhost 打开就没问题。</div>
+
+  <h2 id="t4">4. 画标记点和弹窗</h2>
+  <p>光有底图不够，要有数据点。Leaflet 画点最常用两种标记，先认识 <code>L.circleMarker</code>（圆点，按屏幕像素画大小）：</p>
+  <div class="pg" style="margin:16px 0">
+    <div class="pg-bar"><span class="pg-title">下面这张是活地图 —— 试着拖动、缩放、点圆点</span></div>
+    <div id="live2" class="lmap" style="margin:12px"></div>
+  </div>
+  <p>它背后的核心代码就 6 行：</p>
+  <pre><code>// 颜色表：每类一个颜色（第5课会从API拿真数据替换这3个写死的点）
+const COLORS = { '餐饮': '#f25c54', '医疗': '#ef476f', '购物': '#f7b32b' };
+
+// 一个"圆点标记"：位置、样式、弹窗，三步配齐
+L.circleMarker([30.593, 114.305], {          // 又是 [纬度,经度]！
+    radius: 8,                                 // 半径：像素（不随缩放变）
+    color: '#fff', weight: 1.5,                // 描边：白色 1.5px
+    fillColor: COLORS['餐饮'], fillOpacity: .95  // 填充：类别色
+  }).addTo(map)
+    .bindPopup('&lt;b&gt;老码头火锅&lt;/b&gt;&lt;br&gt;评分 4.6 · 人均 ¥78');  // 点它弹什么</code></pre>
+  <p><code>bindPopup</code> 里的字符串是 HTML——所以 <code>&lt;b&gt;</code> 能加粗、<code>&lt;br&gt;</code> 能换行。地图编程的大半工作就是：**按数据的属性（类别、评分）决定圆点的颜色和大小，把细节塞进弹窗**。</p>
+
+  <h2 id="t5">5. 动手作业：做出你自己的地图</h2>
+  <p>本课不提供"点按钮生成"——手敲才是学会的唯一路径：</p>
+  <ol>
+    <li>用记事本新建文件，完整粘贴下面代码，<strong>保存为</strong> <code>E:\zcode\server\public\course\my-first-map.html</code>（保存时"编码"选 UTF-8，否则中文乱码）；</li>
+    <li>浏览器打开 <code>http://localhost:3000/course/my-first-map.html</code>；</li>
+    <li>完成三个改造任务（见代码注释 ⭐）。</li>
+  </ol>
+  <pre><code>&lt;!DOCTYPE html&gt;
+&lt;html lang="zh-CN"&gt;
+&lt;head&gt;
+&lt;meta charset="UTF-8"&gt;
+&lt;title&gt;my first map&lt;/title&gt;
+&lt;link rel="stylesheet" href="/vendor/leaflet/leaflet.css"&gt;
+&lt;script src="/vendor/leaflet/leaflet.js"&gt;&lt;/script&gt;
+&lt;style&gt; #map { height: 100vh; margin:0; } &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id="map"&gt;&lt;/div&gt;
+&lt;script&gt;
+  const map = L.map('map').setView([30.59, 114.32], 12);   // ⭐任务1：改成你家的经纬度
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', { maxZoom: 16 }).addTo(map);
+
+  const spots = [
+    { name: '临江市政府', lat: 30.593, lng: 114.305, cat: '政府', note: '第1课的圆心' },
+    { name: '青石渡水质站', lat: 30.683, lng: 114.12, cat: '监测站', note: 'Ⅱ类水质' },
+    { name: '入湖口水质站', lat: 30.513, lng: 114.51, cat: '监测站', note: 'Ⅴ类水质' }
+  ];
+  const COLORS = { '政府': '#2563eb', '监测站': '#15803d' };
+  for (const s of spots) {                     // ⭐任务2：加一个你自己的地点
+    L.circleMarker([s.lat, s.lng], {
+      radius: 9, fillColor: COLORS[s.cat], color: '#fff', weight: 1.5, fillOpacity: .95
+    }).addTo(map).bindPopup(`&lt;b&gt;${s.name}&lt;/b&gt;&lt;br&gt;${s.note}`);
+  }
+  // ⭐任务3：加一行 L.map 时启用滚动滚轮缩放提示，或把 setView 的 12 改成 10、14 各看一次
+&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+  <h2 id="t6">6. 练习 + 打卡</h2>
+  <div class="ex">
+    <h4>练习 1（口头）</h4>
+    <p class="q">把 setView([30.59, 114.32], 12) 写成 setView([114.32, 30.59], 12)，地图会显示哪个区域？</p>
+    <details><summary>查看答案</summary><div class="ans">中心变成"北纬 114.32°、东经 30.59°"——这个纬度已经超出北极圈（90°上限会用接近极地的位置解释），地图基本是一团空白/极地冰原。看到"地图去北极了"先查坐标顺序。</div></details>
+  </div>
+  <div class="ex">
+    <h4>练习 2（观察）</h4>
+    <p class="q">缩放到级别 10 和 15 各看一次：瓦片（背景图片）的清晰度和数量有什么变化？为什么 maxZoom 设 16 而不是 19？</p>
+    <details><summary>查看答案</summary><div class="ans">级别越大 → 格子越多越细、单张瓦片覆盖范围越小、需要下载的张数越多。Esri 这套深灰底图最高只提供到 16 级，写 19 的话最后两级会显示灰块（请求 404）。底图的 maxZoom 要和服务的实际能力匹配。</div></details>
+  </div>
+
+  <div class="key" style="margin-top:26px"><b>本课速查卡：</b>HTML=内容 CSS=样式 JS=行为 ｜ 底图=按 {z}/{y}/{x} 拼瓦片图片 ｜ <code>L.map(容器id).setView([纬,经], 级别)</code> ｜ <code>L.circleMarker([纬,经],{样式}).bindPopup(html).addTo(map)</code> ｜ Leaflet 坐标是 [纬度,经度]，跟 SQL 相反！</div>
+
+  <div class="pager">
+    <a href="lesson03.html"><span class="dir">← 上一课</span>第 3 课：把 SQL 变成 API</a>
+    <a class="next" href="lesson05.html"><span class="dir">下一课 →</span>第 5 课：地图接上 API</a>
+  </div>
+</div>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script>
+// ===== 本课两个嵌入式演示地图 =====
+(function () {
+  const TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+  // live1：纯底图
+  const m1 = L.map('live1', { scrollWheelZoom: true }).setView([30.59, 114.32], 11);
+  L.tileLayer(TILES, { maxZoom: 16, attribution: '© Esri · 拖我缩我' }).addTo(m1);
+  // live2：三个写死的圆点标记
+  const m2 = L.map('live2', { scrollWheelZoom: true }).setView([30.593, 114.325], 12);
+  L.tileLayer(TILES, { maxZoom: 16, attribution: '© Esri' }).addTo(m2);
+  const spots = [
+    { name: '老码头火锅（CBD）', lat: 30.593, lng: 114.305, color: '#f25c54', note: '评分 4.6 · 人均 ¥78' },
+    { name: '市一医院', lat: 30.588, lng: 114.352, color: '#ef476f', note: '评分 4.3 · 三甲' },
+    { name: '惠民超市（江北区）', lat: 30.651, lng: 114.312, color: '#f7b32b', note: '评分 4.1 · 人均 ¥45' },
+  ];
+  for (const s of spots) {
+    L.circleMarker([s.lat, s.lng], {
+      radius: 9, fillColor: s.color, color: '#fff', weight: 1.5, fillOpacity: .95
+    }).addTo(m2).bindPopup('<b>' + s.name + '</b><br>' + s.note);
+  }
+})();
+</script>
+</body>
+</html>

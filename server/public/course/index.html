@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebGIS 从零学 · 课程目录</title>
+<link rel="stylesheet" href="course.css">
+</head>
+<body>
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>课程目录</a>
+</div></div>
+
+<div class="wrap">
+  <div class="hero">
+    <h1>WebGIS 全流程 · 从零开始</h1>
+    <p class="lead">你机器上已经有一套完整的系统（空间数据库 + 后端 + 两张地图）。这门课带你把它<strong>一层一层拆开、再亲手搭一遍</strong>。所有练习都直接查你库里真实的 25 万条数据。</p>
+  </div>
+
+  <div class="note">
+    <b>怎么学：</b>① 每课 15–30 分钟，从头到尾顺序学，别跳；② 每个「试一试」框都点一遍<strong>运行</strong>，再改改参数观察变化——敢改才会学；③ 每课做完练习，勾选右上角「已完成」打卡。遇到看不懂、报错、跑不通的，随时把内容贴给对话里的我。
+  </div>
+
+  <h2 style="border:none;margin-top:28px">课程目录</h2>
+  <div class="lesson-grid">
+
+    <a class="lcard" data-lesson="00" href="lesson00.html">
+      <span class="no">第 0 课 · 准备</span>
+      <h3>把系统跑起来，认识每个零件</h3>
+      <p>数据库、SQL、后端、前端分别是什么；启动/停止；第一次连上数据库说话。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+    <a class="lcard" data-lesson="01" href="lesson01.html">
+      <span class="no">第 1 课 · 地基</span>
+      <h3>空间数据长什么样</h3>
+      <p>geom 列、WKT、经纬度、度 vs 米；逐行理解 ST_DWithin；GROUP BY 分步图解。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+    <a class="lcard" data-lesson="02" href="lesson02.html">
+      <span class="no">第 2 课 · 进阶</span>
+      <h3>排序、最近邻与索引</h3>
+      <p>ORDER BY 流水线；KNN 最近邻的错/对两种写法；用 EXPLAIN 亲眼看到索引快 100 倍。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+    <a class="lcard" data-lesson="03" href="lesson03.html">
+      <span class="no">第 3 课 · 后端</span>
+      <h3>把 SQL 变成 API</h3>
+      <p>什么是 HTTP 接口；逐行读懂真实路由代码；调真实接口；亲手给系统加一个端点。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+    <a class="lcard" data-lesson="04" href="lesson04.html">
+      <span class="no">第 4 课 · 前端</span>
+      <h3>第一张 Leaflet 地图</h3>
+      <p>网页三件套、底图瓦片原理（z/x/y）、圆点与弹窗；页面内嵌两张活地图。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+    <a class="lcard" data-lesson="05" href="lesson05.html">
+      <span class="no">第 5 课 · 联动</span>
+      <h3>地图接上 API</h3>
+      <p>fetch 请求数据、视野移动自动刷新、类别筛选——页面里嵌着一台迷你版 POI 系统。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+    <a class="lcard" data-lesson="06" href="lesson06.html">
+      <span class="no">第 6 课 · 数据</span>
+      <h3>数据从哪来：造出 25 万个点</h3>
+      <p>为什么均匀随机是假数据；高斯聚集/沿路分布；COPY 秒级灌库；3 个查询亲手验证规律。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+    <a class="lcard" data-lesson="07" href="lesson07.html">
+      <span class="no">第 7 课 · 三维</span>
+      <h3>Cesium 三维流域</h3>
+      <p>页面里嵌着一个真三维球：流域边界 + 彩色站点 + 点击拾取 + 相机飞行，逐行拆解。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+    <a class="lcard" data-lesson="08" href="lesson08.html">
+      <span class="no">第 8 课 · 收官</span>
+      <h3>测试与性能（毕业课）</h3>
+      <p>业务不变量断言、性能基准方法、一次真实调优复盘，以及三选一毕业项目。</p>
+      <span class="st open">可学习 →</span>
+    </a>
+
+  </div>
+
+  <h2>三个入口（现在就能打开）</h2>
+  <table class="doc">
+    <tr><th>地址</th><th>是什么</th></tr>
+    <tr><td class="mono"><a href="http://localhost:3000/poi" target="_blank">localhost:3000/poi</a></td><td>POI 空间分析系统（第 4、5 课的"成品"，我们照着它学）</td></tr>
+    <tr><td class="mono"><a href="http://localhost:3000/basin" target="_blank">localhost:3000/basin</a></td><td>流域生态监测平台（第 7 课的"成品"）</td></tr>
+    <tr><td class="mono"><a href="http://localhost:3000/course" target="_blank">localhost:3000/course</a></td><td>本课程（收藏这个，以后从这进）</td></tr>
+  </table>
+
+  <div class="key" style="margin-top:26px">系统停了？双击 <code>E:\zcode\scripts\start-all.bat</code> 一键重启数据库和后端。</div>
+</div>
+
+<script src="course.js"></script>
+</body>
+</html>

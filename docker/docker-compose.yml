@@ -1,0 +1,43 @@
+# Docker 化部署（可选）。本机便携版部署见 scripts/start-db.bat + server/。
+# 用法:
+#   docker compose up -d db          # 只起数据库
+#   docker compose up -d db server   # 数据库 + API/前端
+version: "3.9"
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: webgis
+      POSTGRES_PASSWORD: webgis123
+      POSTGRES_DB: webgis
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../db/01_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webgis -d webgis"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  server:
+    build: ../server
+    environment:
+      PORT: "3000"
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: webgis
+      PGPASSWORD: webgis123
+      PGDATABASE: webgis
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # 首次启动后执行一次种子数据：
+    #   docker compose exec server node scripts/seed.js
+
+volumes:
+  pgdata:

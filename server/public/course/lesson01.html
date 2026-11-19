@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第 1 课 · 空间数据长什么样</title>
+<link rel="stylesheet" href="course.css">
+</head>
+<body data-lesson="01">
+<div class="topbar"><div class="topbar-in">
+  <a class="brand" href="index.html">WebGIS 从零学<span> · </span>第 1 课</a>
+  <label class="done-toggle"><input type="checkbox"> 已完成本课</label>
+</div></div>
+
+<div class="wrap">
+  <h1><span class="knum">第 1 课</span>空间数据长什么样</h1>
+  <p class="lead">学完这课你就能用 SQL 问数据库"某点周围 500 米内有多少餐饮店"这种空间问题，并且真正理解每一步在做什么。</p>
+
+  <nav class="toc">
+    <b>本课目录</b>
+    <ol>
+      <li><a href="#t1">表是什么：从 Excel 说起</a></li>
+      <li><a href="#t2">geom：空间的"第五列"</a></li>
+      <li><a href="#t3">经纬度小常识</a></li>
+      <li><a href="#t4">度 vs 米：本课第一个大坑</a></li>
+      <li><a href="#t5">WHERE 是逐行提问</a></li>
+      <li><a href="#t6">拆解 ST_DWithin：三个参数各是什么</a></li>
+      <li><a href="#t7">GROUP BY 分步图解</a></li>
+      <li><a href="#t8">组合实战 + 练习</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="t1">1. 表是什么：从 Excel 说起</h2>
+  <p>数据库里放数据的东西叫<strong>表（table）</strong>，长得就像 Excel 工作表：一行一条记录，一列一个属性。我们的主角是 <code>poi.pois</code> 表——<code>poi</code> 是文件夹（模式名），<code>pois</code> 是表名，里面住着 25 万条地点记录。</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 1-1 · 第一次看表</span><span class="pg-hint">* 表示"所有列"</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT * FROM poi.pois LIMIT 5;</textarea>
+    <div class="pg-out">点击运行 —— LIMIT 5 表示只要前 5 行。找到 geom 列了吗？它看起来是一长串乱码</div>
+  </div>
+  <p>你应该看到 7 列：<code>id</code>（编号）、<code>name</code>（店名）、<code>category</code>（大类）、<code>subcategory</code>（子类）、<code>rating</code>（评分）、<code>price</code>（人均价）、<code>geom</code>（坐标）。前 6 列你都懂，<strong>唯独 geom 是一长串 <code>\x0101...</code> 开头的乱码</strong>——那其实是二进制的坐标数据，是给机器看的。人要看懂它，得用"翻译函数"。</p>
+
+  <h2 id="t2">2. geom：空间的"第五列"</h2>
+  <p>普通数据库的列存数字和文字；装了 PostGIS 后，多了一种列类型——<strong>geometry（几何）</strong>。它有三种常用形态：</p>
+  <table class="doc">
+    <tr><th>类型</th><th>WKT 写法（人话）</th><th>在我们的库里</th></tr>
+    <tr><td>Point（点）</td><td class="mono">POINT(114.31 30.59)</td><td>POI、监测站、污染源</td></tr>
+    <tr><td>LineString（线）</td><td class="mono">LINESTRING(114.1 30.68, 114.5 30.51)</td><td>河流</td></tr>
+    <tr><td>Polygon（面）</td><td class="mono">POLYGON((114.1 30.4, 114.5 30.4, ...))</td><td>行政区、流域边界</td></tr>
+  </table>
+  <p>右边那种括号写法叫 <strong>WKT</strong>（Well-Known Text，知名文本格式）——空间数据的"世界语"。用 <code>ST_AsText()</code> 把机器格式翻译成 WKT：</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 1-2 · 翻译坐标</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT id, name, ST_AsText(geom) AS 位置
+FROM poi.pois LIMIT 5;</textarea>
+    <div class="pg-out">点击运行 —— geom 变成了人能读懂的 POINT(经度 纬度)</div>
+  </div>
+  <div class="warn"><b>顺序固定是 POINT(经度 纬度)</b>，即 X 在前 Y 在后。写反了不报错，但点会跑到地图外几百公里——这是新手最常见的事故之一。</div>
+  <p>反过来取分量用 <code>ST_X()</code> / <code>ST_Y()</code>：</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 1-3 · 拆出经纬度</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT name,
+       ST_X(geom) AS 经度,
+       ST_Y(geom) AS 纬度
+FROM poi.pois LIMIT 5;</textarea>
+    <div class="pg-out">点击运行</div>
+  </div>
+  <div class="note"><b>小规律：</b>PostGIS 的空间函数几乎都以 <code>ST_</code> 开头（Spatial Type）。以后见到 ST_ 开头的东西，就知道"这是在干空间相关的活"。</div>
+
+  <h2 id="t3">3. 经纬度小常识</h2>
+  <p>经纬度你初中地理学过：<strong>经度</strong>是东西方向（我们城市在东经 114° 左右），<strong>纬度</strong>是南北方向（北纬 30° 左右——跟武汉、重庆同纬度带）。我们这套虚拟城市"临江市"的数据范围是经度 114.08–114.56、纬度 30.44–30.72。</p>
+  <p>关键数字：<strong>1 个纬度 ≈ 111 公里</strong>（地球上任意位置都差不多）。1 个经度在赤道也是 111km，但越往两极越"瘦"——在北纬 30°，1 个经度 ≈ 111 × cos(30°) ≈ <strong>96 公里</strong>。这两个换算在后面估距离时特别好用。</p>
+
+  <h2 id="t4">4. 度 vs 米：本课第一个大坑</h2>
+  <p>问：点 A(114.305, 30.593) 到点 B(114.365, 30.558) 有多远？直接用 <code>ST_Distance()</code> 算：</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 1-4 · 同一段距离的两种算法</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT '按度算' AS 方式,
+       ST_Distance(ST_MakePoint(114.305,30.593),
+                   ST_MakePoint(114.365,30.558))::numeric(10,4) AS 结果
+UNION ALL
+SELECT '按米算(geography)',
+       ST_Distance(ST_MakePoint(114.305,30.593)::geography,
+                   ST_MakePoint(114.365,30.558)::geography)::numeric(12,1);</textarea>
+    <div class="pg-out">点击运行 —— 同一段距离，一个 0.0694，一个 6941，差的不是单位是"世界观"</div>
+  </div>
+  <p>为什么？因为经纬度本质是<strong>角度</strong>不是长度。直接算出来的是"0.0694 度"——数学上没错，但你没法拿"度"回答"离我多远"。在 geom 后面加 <code>::geography</code>（两个冒号是 PostgreSQL 的类型转换写法，读作"当作"），等于告诉数据库：<strong>"别把地球当平面了，按真实球面算，单位用米。"</strong></p>
+  <p>验证一下：0.0694 度，纬度方向 0.035°×111km≈3.9km，经度方向 0.06°×96km≈5.8km，勾股定理 √(3.9²+5.8²)≈7.0km——和 6941 米对上了（微小差异来自球面弯曲）。</p>
+  <div class="pit">忘了 <code>::geography</code> 是本课第一大坑：SQL 不报错、能出数，只是数字小得离谱（几百倍）。以后凡是看到"距离 0.02"这种结果，第一反应就该是"我又忘了转 geography"。</div>
+  <div class="key"><b>记忆卡：</b>要"米"，就 <code>::geography</code>。本课所有涉及距离的地方都遵守这条。</div>
+
+  <h2 id="t5">5. WHERE 是逐行提问</h2>
+  <p>要看懂空间查询，必须先建立一个执行模型。<code>WHERE</code> 的工作方式是：<strong>拿着条件，从第一行到最后一行，每行问一遍"你满足吗"，满足的留下，不满足的扔掉。</strong></p>
+  <p>比如 <code>WHERE rating &gt;= 4.5</code> 对 5 行数据的过程：</p>
+  <div class="demo">
+    <div class="rowflow">
+      <div class="r">安佳家政 · 评分 4.2 <span class="v n">✗ 丢</span></div>
+      <div class="r ok">万家福总店 · 评分 4.7 <span class="v y">✓ 留</span></div>
+      <div class="r">大众4S店 · 评分 3.9 <span class="v n">✗ 丢</span></div>
+      <div class="r ok">市一医院 · 评分 4.8 <span class="v y">✓ 留</span></div>
+      <div class="r">蓝湾西餐厅 · 评分 4.5 <span class="v y">✓ 留（≥ 含等于）</span></div>
+    </div>
+    <div class="cap">WHERE 从头到尾逐行扫描 —— 这就是它的工作原理</div>
+  </div>
+
+  <h2 id="t6">6. 拆解 ST_DWithin：三个参数各是什么</h2>
+  <p>现在回答你问过的那个问题——<code>ST_DWithin(geom::geography, ST_MakePoint(...)::geography, 500)</code> 里的"几何"到底是什么。</p>
+  <p><code>ST_DWithin(甲, 乙, 半径)</code> 问的是：<strong>"甲到乙的距离 ≤ 半径吗？"</strong>返回真或假。</p>
+  <table class="doc">
+    <tr><th>参数</th><th>这条查询里是谁</th><th>说明</th></tr>
+    <tr><td class="mono">甲 = geom::geography</td><td><strong>每一行 POI 自己的坐标</strong></td><td>geom 是列名，不带具体值——数据库逐行扫描时，每行把自己的坐标代入进去</td></tr>
+    <tr><td class="mono">乙 = ST_MakePoint(114.305,30.593)::geography</td><td>你指定的圆心（市政府）</td><td>全表共用同一个点；ST_MakePoint(经度, 纬度) 现造一个点</td></tr>
+    <tr><td class="mono">半径 = 500</td><td>500 米</td><td>因为前面转了 geography，单位是米</td></tr>
+  </table>
+  <p>所以整条 <code>SELECT count(*) FROM poi.pois WHERE ST_DWithin(...)</code> 的执行过程是：数据库对 25 万行<strong>逐行</strong>问"你这个点到市政府的球面距离 ≤ 500 米吗"，真的留下、假的丢掉，最后 count(*) 数一数留下几行。下面亲手跑：</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 1-5 · 市政府 500 米圈</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT count(*) AS 半径500米内的POI数
+FROM poi.pois
+WHERE ST_DWithin(geom::geography,
+                 ST_MakePoint(114.305,30.593)::geography,
+                 500);</textarea>
+    <div class="pg-out">点击运行 —— 试试把 500 改成 100、2000，体会"半径"的意义</div>
+  </div>
+  <div class="pit">乙、甲两个参数必须<strong>同时</strong>是 geography（或同时是普通 geometry）。只给一个加 <code>::geography</code> 会直接报错——这是好事，报错逼你改对。</div>
+
+  <h2 id="t7">7. GROUP BY 分步图解</h2>
+  <p>第二个你问过的问题。<code>GROUP BY</code> 做"归堆"：<strong>把筛选后的行，按某一列的值相同归成一堆，然后对每一堆各算一次汇总。</strong></p>
+  <p>以"500 米内的 7202 行按类别归堆"为例：</p>
+  <div class="demo">
+    <div class="groupdemo">
+      <div class="stack">
+        <h4>第①步 · 归堆（GROUP BY category）</h4>
+        <span class="chip">餐饮</span><span class="chip">餐饮</span><span class="chip">餐饮</span><span class="chip">餐饮</span><span class="chip">…共1755行</span>
+        <span class="chip">购物</span><span class="chip">购物</span><span class="chip">…共1506行</span>
+        <span class="chip">生活服务</span><span class="chip">…共1006行</span>
+        <span class="chip">休闲娱乐</span>… <span class="chip">汽车服务</span>…
+      </div>
+      <div class="stack">
+        <h4>第②步 · 每堆算一次 count(*)</h4>
+        <div class="res">餐饮 → 1755</div>
+        <div class="res">购物 → 1506</div>
+        <div class="res">生活服务 → 1006</div>
+        <div class="res">… → …</div>
+      </div>
+    </div>
+    <div class="cap">归堆 → 每堆聚合一次 → 输出每堆一行的汇总表</div>
+  </div>
+  <p>对应规则（重要）：<code>SELECT</code> 后面只能出现两种东西——<strong>GROUP BY 的那列</strong>（比如 category），或<strong>聚合函数</strong>（count 求数量、avg 求平均、sum 求和、max/min 求极值）。写 <code>SELECT name, count(*)</code> 会报错：一堆里有很多个店名，数据库不知道显示哪个。</p>
+  <div class="pg">
+    <div class="pg-bar"><span class="pg-title">试一试 1-6 · 分组统计完整版</span><button class="pg-run" type="button">▶ 运行</button></div>
+    <textarea spellcheck="false">SELECT category   AS 类别,
+       count(*)     AS 数量,
+       avg(rating)::numeric(3,2) AS 平均评分
+FROM poi.pois
+WHERE ST_DWithin(geom::geography,
+                 ST_MakePoint(114.305,30.593)::geography,
+                 500)
+GROUP BY category
+ORDER BY 数量 DESC;</textarea>
+    <div class="pg-out">点击运行 —— 这就是"市中心 500 米各类别 POI 构成"。ORDER BY ... DESC 表示按数量从大到小排</div>
+  </div>
+  <p>一句话总结：<strong>WHERE 决定哪些行参加，GROUP BY 决定按什么归堆，count/avg 决定每堆算什么。</strong></p>
+
+  <h2 id="t8">8. 组合实战 + 练习</h2>
+  <p>你已经会的零件：逐行筛选（WHERE + ST_DWithin）、归堆（GROUP BY）、聚合（count/avg）。拼起来就是真实分析。下面是练习——<strong>先自己写，写不出来再看答案</strong>。可以直接在「试一试 1-6」的框里改。</p>
+
+  <div class="ex">
+    <h4>练习 1</h4>
+    <p class="q">把半径从 500 改成 2000（2 公里），总数变成多少？和 500 米的 7202 相比，面积扩了 16 倍，数量有没有扩 16 倍？为什么？</p>
+    <details><summary>查看答案</summary><div class="ans">总数 <b>44,984</b>。没有扩 16 倍——因为市中心 500 米圈本来就最挤（覆盖了三大 CBD 之一的核心），往外扩的 1.5 公里包含江面和低密度区。数量增长是"先快后慢"的，这正是热力图能画出"中心热、边缘冷"的原因。</div></details>
+  </div>
+  <div class="ex">
+    <h4>练习 2</h4>
+    <p class="q">市政府 1000 米内"餐饮"的平均评分、平均人均消费是多少？提示：在 WHERE 里加一个 <code>AND category = '餐饮'</code>，SELECT 里写 <code>avg(rating)</code> 和 <code>avg(price)</code>。不需要 GROUP BY（为什么？想想"归堆"——只有一个堆时不用归）。</p>
+    <details><summary>查看答案</summary><div class="ans"><pre style="margin:8px 0"><code>SELECT round(avg(rating)::numeric,2) AS 平均评分,
+       round(avg(price)::numeric,0)  AS 人均价
+FROM poi.pois
+WHERE ST_DWithin(geom::geography, ST_MakePoint(114.305,30.593)::geography, 1000)
+  AND category = '餐饮';</code></pre>结果：平均评分 <b>3.77</b>，人均 <b>62</b> 元。因为不归堆，整张表就是一个堆，聚合函数直接出单个结果。</div></details>
+  </div>
+
+  <div class="key" style="margin-top:26px"><b>本课速查卡：</b><code>ST_AsText(geom)</code> 翻译坐标 ｜ <code>ST_X/ST_Y</code> 拆经纬 ｜ 要米就 <code>::geography</code> ｜ <code>ST_DWithin(每行的geom, 圆心, 半径米)</code> 逐行问距离 ｜ GROUP BY 归堆后每堆一个聚合结果 ｜ SELECT 后只能放分组列或聚合函数。</div>
+
+  <div class="pager">
+    <a href="lesson00.html"><span class="dir">← 上一课</span>第 0 课：把系统跑起来</a>
+    <a class="next" href="lesson02.html"><span class="dir">下一课 →</span>第 2 课：排序、最近邻与索引</a>
+  </div>
+</div>
+
+<script src="course.js"></script>
+</body>
+</html>
